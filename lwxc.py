@@ -89,6 +89,9 @@ class window_main():
         self.window.set_size_request(800, 500)
         self.window.set_position(gtk.WIN_POS_CENTER)
 
+        if config.get_maximize():
+            self.window.maximize()
+
         vbox1 = gtk.VBox(False, 0)
         self.window.add(vbox1)
 
@@ -948,6 +951,7 @@ class Config():
     # defaults
     autostart = "True"
     autostop = "False"
+    maximize = "False"
 
     def __init__(self):
         parser = ConfigParser.SafeConfigParser()
@@ -961,6 +965,7 @@ class Config():
             parser.add_section("main")
             parser.set("main", "SERVER_AUTOSTART", self.autostart)
             parser.set("main", "SERVER_AUTOSTOP", self.autostop)
+            parser.set("main", "MAXIMIZE", self.maximize)
             parser.write(config)
             config.close
 
@@ -975,6 +980,7 @@ class Config():
 
         self.autostart = parser.get("main", "SERVER_AUTOSTART")
         self.autostop = parser.get("main", "SERVER_AUTOSTOP")
+        self.maximize = parser.get("main", "MAXIMIZE")
 
     def get_autostart(self):
         if self.autostart == "True":
@@ -984,6 +990,12 @@ class Config():
 
     def get_autostop(self):
         if self.autostop == "True":
+            return True
+        else:
+            return False
+
+    def get_maximize(self):
+        if self.maximize == "True":
             return True
         else:
             return False
