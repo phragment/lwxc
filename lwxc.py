@@ -488,15 +488,19 @@ class window_main():
 
         menu = gtk.Menu()
 
+        create = gtk.MenuItem("new playlist")
+        create.connect("activate", self.show_text_entry_dialog)
+        menu.append(create)
+
         # playlist can be None
         if playlist is not None:
             playlist = remove_pango(playlist)
             
-            clear = gtk.MenuItem("clear \'" + playlist + "\'")
+            clear = gtk.MenuItem("clear " + playlist)
             clear.connect("activate", connection.playlist_clear, playlist)
             menu.append(clear)
 
-            remove = gtk.MenuItem("remove \'" + playlist + "\'")
+            remove = gtk.MenuItem("remove " + playlist)
             remove.connect("activate", connection.playlist_remove, playlist)
             menu.append(remove)
 
@@ -508,22 +512,23 @@ class window_main():
             #rename.connect("activate", self.to_be_implemented_handler)
             #menu.append(rename)
 
-        create = gtk.MenuItem("new playlist")
-        create.connect("activate", self.show_text_entry_dialog)
-        menu.append(create)
+        menu.show_all()
 
         selection = treeview.get_selection()
         (model, iter) = selection.get_selected()
 
-        path = model.get_path(iter)
+        # TODO check for button, not selection
+        if iter:
+            path = model.get_path(iter)
 
-        cell_area = treeview.get_cell_area(path, treeview.get_column(0))
+            cell_area = treeview.get_cell_area(path, treeview.get_column(0))
 
-        x, y = treeview.get_bin_window().get_origin()
-        y += cell_area.y
+            x, y = treeview.get_bin_window().get_origin()
+            y += cell_area.y
 
-        menu.show_all()
-        menu.popup(None, None, self.position_menu, button, time, (x, y))
+            menu.popup(None, None, self.position_menu, button, time, (x, y))
+        else:
+            menu.popup(None, None, None, button, time)
 
     def position_menu(window, menu, data):
         (x, y) = data
@@ -645,8 +650,11 @@ class Connection:
 
     def __init__(self):
         if config.get_autostart():
+            # TODO
+            # check if running (xmms.get_fd()?)
             print "starting xmms2"
             os.system("xmms2-launcher")
+            # wait some time / wait for launcher exit
 
         self.xmms_async = xmmsclient.XMMS("lwxc")
         try:
@@ -946,6 +954,10 @@ def remove_pango(data):
     regex = re.compile(r'<.*?>')
     return regex.sub('', data)
 
+# TODO sanitze
+# no dir!
+# no section
+# no option
 class Config():
 
     # defaults
