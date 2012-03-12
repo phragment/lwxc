@@ -22,6 +22,7 @@ TODO
    connection.get_* connection.add_*
  - check xmms2 errors plus sync vs. async
  - check on config exceptions
+ - unsure about auto scrolling
 
 later?
  - drag & drop
@@ -263,7 +264,8 @@ class window_main():
         self.playlist_sw.add(self.playlist_tv)
 
         (cur, last) = connection.get_playlist(self.playlist_tv)
-        self.playlist_tv.scroll_to_cell(cur)
+        if cur != -1:
+            self.playlist_tv.scroll_to_cell(cur)
 
 
 #        hbox2 = gtk.HBox(False, 0)
@@ -286,7 +288,6 @@ class window_main():
     def quit(self, widget):
         loop.quit()
 
-    # brutal force unhide, but it works...
     def toggle(self, widget=None):
         if self.window.get_property("visible"):
             self.pos_x, self.pos_y = self.window.get_position()
@@ -294,8 +295,10 @@ class window_main():
         else:
             self.window.present()
             if self.pos_x != -1:
-                self.window.move(self.pos_x, self.pos_y)
-            self.window.set_keep_above(True)
+                screen = self.window.get_screen()
+                pos_x = self.pos_x % screen.get_width()
+                pos_y = self.pos_y % screen.get_height()
+                self.window.move(pos_x, pos_y)
 
     def on_delete_event(self, widget, event):
         self.window.hide()
@@ -454,22 +457,21 @@ class window_main():
         # store selection
         selection = self.playlist_tv.get_selection()
         (model, iter) = selection.get_selected()
+        pos = None
         if iter:
             pos = model.get_path(iter)[0]
 
         (cur, last) = connection.get_playlist(self.playlist_tv)
 
-        # auto scroll only nothing is selected
-        if not iter:
-            # don't scroll an empty treeview
-            if not self.playlist_tv.get_model().get_iter_root() == None:
-                self.playlist_tv.scroll_to_cell(cur)
-
+        # restore selection
         if iter:
             if pos == last:
                 pos -= 1
             if pos != -1:
                 selection.select_path(pos)
+
+        if cur != -1:
+            self.playlist_tv.scroll_to_cell(cur)
 
         self.playlist_changing = False
 
@@ -782,7 +784,10 @@ class Connection:
 
         result = self.xmms.playlist_list_entries()
 
-        pos_cur = self.get_playlist_cur_pos()
+        if result:
+            pos_cur = self.get_playlist_cur_pos()
+        else:
+            pos_cur = -1
 
         store.clear()
 
