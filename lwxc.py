@@ -18,13 +18,9 @@
 
 """
 TODO
- - check playlist sort
- - check add titles to playlist, selection workaround
  - rewrite use of collections
- - after delete (from playlist) select next
- - placement on unhide (pidgin!)
- - replace result.get_error() with result.value() (for async only?)
- - control already running instance (show/hide)
+ - cursor/scrolling follows playback
+ - sort playlists alphabetically
 
 later?
  - drap & drop
@@ -34,7 +30,6 @@ later?
 """
 
 import pygtk
-#pygtk.require("2.0")
 import gtk
 import os
 import sys
@@ -64,6 +59,7 @@ class window_main():
     playlists_sel = None
     playlists_tv = None
     playlist = None
+    playlist_tv = None
 
     playlist_changing = False
 
@@ -74,7 +70,6 @@ class window_main():
     tracks_selection = []
     tracks_selection_prev = []
 
-    # TODO
     dialog = None
     dialog_entry = None
 
@@ -246,25 +241,25 @@ class window_main():
         vbox2.pack_start_defaults(playlist_sw)
 
 
-        playlist_tv = gtk.TreeView()
+        self.playlist_tv = gtk.TreeView()
 
         cel = gtk.CellRendererText()
         col = gtk.TreeViewColumn("Playlist", cel, markup=0)
-        playlist_tv.append_column(col)
-        playlist_tv.set_headers_visible(False)
+        self.playlist_tv.append_column(col)
+        self.playlist_tv.set_headers_visible(False)
 
-        playlist_sel = playlist_tv.get_selection()
+        playlist_sel = self.playlist_tv.get_selection()
         playlist_sel.set_mode(gtk.SELECTION_SINGLE)
 
         self.playlist = gtk.ListStore(str)
-        playlist_tv.set_model(self.playlist)
+        self.playlist_tv.set_model(self.playlist)
 
-        playlist_tv.connect("row-activated", self.on_playlist_activated)
-        playlist_tv.connect("key-press-event", self.on_playlist_key_press)
+        self.playlist_tv.connect("row-activated", self.on_playlist_activated)
+        self.playlist_tv.connect("key-press-event", self.on_playlist_key_press)
 
-        playlist_sw.add(playlist_tv)
+        playlist_sw.add(self.playlist_tv)
 
-        connection.get_playlist(self.playlist)
+        connection.get_playlist(self.playlist_tv)
 
 
 #        hbox2 = gtk.HBox(False, 0)
@@ -287,17 +282,16 @@ class window_main():
     def quit(self, widget):
         loop.quit()
 
+    # brutal force unhide, but it works...
     def toggle(self, widget=None):
         if self.window.get_property("visible"):
-            # conflicts with position
-            # even restores workspace?!
             self.pos_x, self.pos_y = self.window.get_position()
             self.window.hide()
         else:
-            self.window.deiconify()
-            self.window.show()
+            self.window.present()
             if self.pos_x != -1:
                 self.window.move(self.pos_x, self.pos_y)
+            self.window.set_keep_above(True)
 
     def on_delete_event(self, widget, event):
         self.window.hide()
@@ -328,8 +322,6 @@ class window_main():
         (model, pathlist) = self.artists_sel.get_selected_rows()
         self.artists_selection = pathlist
 
-        # TODO
-        # make list comprehension
         artists = []
         for path in pathlist:
             iter = model.get_iter(path)
@@ -342,8 +334,6 @@ class window_main():
         (model, pathlist) = self.albums_sel.get_selected_rows()
         self.albums_selection = pathlist
 
-        # TODO
-        # make list comprehension
         albums = []
         for path in pathlist:
             iter = model.get_iter(path)
@@ -366,7 +356,6 @@ class window_main():
         for path in pathlist:
             iter = model.get_iter(path)
             artists.append(model.get_value(iter, 0))
-            # workaround
             selection.select_path(path)
 
         connection.add_artists(artists)
@@ -381,7 +370,6 @@ class window_main():
         for path in pathlist:
             iter = model.get_iter(path)
             albums.append(model.get_value(iter, 0))
-            # workaround
             selection.select_path(path)
 
         connection.add_albums(albums)
@@ -390,18 +378,13 @@ class window_main():
         selection = treeview.get_selection()
         (model, pathlist) = selection.get_selected_rows()
 
-        #print pathlist
         pathlist = self.tracks_selection_prev
-        #print pathlist
 
         tracks = []
         for path in pathlist:
             iter = model.get_iter(path)
             tracks.append(model.get_value(iter, 0))
-            # important part of workaround!
             selection.select_path(path)
-
-        #print tracks
 
         connection.add_tracks(tracks)
 
@@ -423,18 +406,6 @@ class window_main():
             name = model.get_value(iter, 0)
 
             self.on_playlists_menu(treeview, 0, event.time, name)
-
-        if event.keyval == gtk.keysyms.Delete:
-
-            print "disabled"
-            return
-
-            selection = treeview.get_selection()
-            (model, iter) = selection.get_selected()
-
-            name = model.get_value(iter, 0)
-
-            connection.remove_playlist(name)
 
     def on_playlists_button_press(self, treeview, event):
         if event.button == 3:
@@ -468,21 +439,29 @@ class window_main():
     def on_playlists_changed(self, result):
         connection.get_playlists(self.playlists)
 
-    # solve via callbacks?! (maybe coll_add cd?)
     def on_playlist_changed(self, result):
-#        print "stage 1"
+
         # poor mans lock
         if self.playlist_changing:
             return
-        self.playlist_changing = True
-        #time.sleep(0.1)
 
-#        print "stage 2"
-        connection.get_playlist(self.playlist)
+        self.playlist_changing = True
+
+        # store selection
+        selection = self.playlist_tv.get_selection()
+        (model, iter) = selection.get_selected()
+        if iter:
+            pos = model.get_path(iter)[0]
+
+        (cur, last) = connection.get_playlist(self.playlist_tv)
+
+        if iter:
+            if pos == last:
+                pos -= 1
+            if pos != -1:
+                selection.select_path(pos)
 
         self.playlist_changing = False
-
-
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -588,7 +567,6 @@ class window_main():
         connection.playlist_create(text)
 
 
-#class TrayIcon(window, connection):
 class TrayIcon():
 
     icon = None
@@ -698,15 +676,10 @@ class Connection:
         for artist in artists:
             coll = coll | collections.Match(field="artist", value=artist)
 
-#        result = self.xmms_async.playlist_clear()
-#        result.wait()
-#        if result.iserror():
-#            print "error: ", result.get_error()
-
         result = self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
     def add_albums(self, albums):
         coll = collections.IDList()
@@ -716,7 +689,7 @@ class Connection:
         result = self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
     def dummy(self, value):
         print "dummy"
@@ -730,7 +703,8 @@ class Connection:
 #            coll = coll | collections.Match(field="title", value=track)
             coll = collections.Match(field="title", value=track)
             #self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"], cb=self.dummy)
-            self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
+            #self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
+            self.xmms_async.playlist_add_collection(coll)
 
 #        self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"], cb=self.dummy)
 
@@ -741,7 +715,7 @@ class Connection:
         result = self.xmms_async.coll_query_infos(artists, ["artist"], order=["artist"])
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
         store.clear()
         for artist in result.value():
@@ -758,7 +732,7 @@ class Connection:
         result = self.xmms_async.coll_query_infos(albums, ["album"], order=["artist", "date", "album"])
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
         store.clear()
         for album in result.value():
@@ -775,7 +749,7 @@ class Connection:
         result = self.xmms_async.coll_query_infos(tracks, ["title"], order=['artist', 'date', 'album', 'tracknr', 'title'])
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
         store.clear()
         for title in result.value():
@@ -787,7 +761,11 @@ class Connection:
         except xmmsclient.sync.XMMSError:
             pass
 
-    def get_playlist(self, store):
+    # TODO cursor follows playback?
+    def get_playlist(self, treeview):
+        store = treeview.get_model()
+        #selection = treeview.get_selection()
+
         result = self.xmms.playlist_list_entries()
 
         pos_cur = self.get_playlist_cur_pos()
@@ -805,12 +783,14 @@ class Connection:
             store.append([bar])
             pos = pos + 1
 
-    # TODO this should be a class
+        #selection.select_path(pos_cur)
+        return (pos_cur, pos)
+
     def get_info(self, id):
         result = self.xmms_async.medialib_get_info(id)
         result.wait()
         if result.iserror():
-            print "error: ", result.get_error()
+            print "error: ", result.value()
 
         return result.value()
 
@@ -929,7 +909,6 @@ class Connection:
             print "error: ", result.value()
 
     def playlist_create(self, playlist):
-        #playlist_create(playlist, cb=None)
         result = self.xmms_async.playlist_create(playlist)
         result.wait()
         if result.is_error():
@@ -968,7 +947,6 @@ class Config():
 
     def __init__(self):
         parser = ConfigParser.SafeConfigParser()
-#        parser.optionxfrom = str
 
         # error check
         try:
