@@ -24,7 +24,6 @@ TODO
  - after delete (from playlist) select next
  - placement on unhide (pidgin!)
  - replace result.get_error() with result.value() (for async only?)
- - replace cgi with glib.markup_escape_text
  - control already running instance (show/hide)
 
 later?
@@ -47,6 +46,8 @@ import cgi
 import time
 import re
 import ConfigParser
+from optparse import OptionParser
+import signal
 
 class window_main():
 
@@ -286,7 +287,7 @@ class window_main():
     def quit(self, widget):
         loop.quit()
 
-    def toggle(self, widget):
+    def toggle(self, widget=None):
         if self.window.get_property("visible"):
             # conflicts with position
             # even restores workspace?!
@@ -1012,12 +1013,36 @@ class Config():
         else:
             return False
 
+def signal_handler(signum, frame):
+    window.toggle()
+
 if __name__ == "__main__":
     global config
     global loop
     global connection
     global window
     global icon
+
+    parser = OptionParser()
+
+    parser.add_option("-t", "--toggle",
+                      action="store_true", dest="toggle", default=False,
+                      help="toggle window visibility")
+
+    (options, args) = parser.parse_args()
+
+
+    if options.toggle:
+        try:
+            pidfile = open('/tmp/lwxc.pid', 'r')
+        except IOError:
+            sys.exit(1)
+
+        os.kill(int(pidfile.readline()), signal.SIGUSR1)
+        pidfile.close()
+
+        sys.exit(0)
+
 
     try:
         config = Config()
@@ -1028,7 +1053,18 @@ if __name__ == "__main__":
         window = window_main()
         icon = TrayIcon()
 
+        try:
+            pidfile = open('/tmp/lwxc.pid', 'w')
+            pidfile.write(str(os.getpid()))
+            pidfile.close()
+        except IOError:
+            pass
+
+        signal.signal(signal.SIGUSR1, signal_handler)
+
         loop.run()
+
+        os.remove('/tmp/lwxc.pid')
 
     except KeyboardInterrupt:
         loop.quit()
