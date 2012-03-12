@@ -19,26 +19,26 @@
 """
 TODO
  - rewrite use of collections
- - cursor/scrolling follows playback
- - sort playlists alphabetically
- - check xmms2 errors
+   connection.get_* connection.add_*
+ - check xmms2 errors plus sync vs. async
+ - check on config exceptions
 
 later?
- - drap & drop
-  - reordering of playlist
-  - add to playlist
+ - drag & drop
+   - reordering of playlist
+   - add to playlist
  - seekbar
 """
 
 import pygtk
 import gtk
+import glib
 import os
 import sys
 import xmmsclient
 from xmmsclient import collections
 import xmmsclient.glib
 import gobject
-import cgi
 import time
 import re
 import ConfigParser
@@ -62,6 +62,7 @@ class window_main():
     playlists_tv = None
     playlist = None
     playlist_tv = None
+    playlist_sw = None
 
     playlist_changing = False
 
@@ -238,9 +239,9 @@ class window_main():
         hsep1 = gtk.HSeparator()
         vbox2.pack_start(hsep1, False, False, 0)
 
-        playlist_sw = gtk.ScrolledWindow()
-        playlist_sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-        vbox2.pack_start_defaults(playlist_sw)
+        self.playlist_sw = gtk.ScrolledWindow()
+        self.playlist_sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        vbox2.pack_start_defaults(self.playlist_sw)
 
 
         self.playlist_tv = gtk.TreeView()
@@ -259,9 +260,10 @@ class window_main():
         self.playlist_tv.connect("row-activated", self.on_playlist_activated)
         self.playlist_tv.connect("key-press-event", self.on_playlist_key_press)
 
-        playlist_sw.add(self.playlist_tv)
+        self.playlist_sw.add(self.playlist_tv)
 
-        connection.get_playlist(self.playlist_tv)
+        (cur, last) = connection.get_playlist(self.playlist_tv)
+        self.playlist_tv.scroll_to_cell(cur)
 
 
 #        hbox2 = gtk.HBox(False, 0)
@@ -457,6 +459,12 @@ class window_main():
 
         (cur, last) = connection.get_playlist(self.playlist_tv)
 
+        # auto scroll only nothing is selected
+        if not iter:
+            # don't scroll an empty treeview
+            if not self.playlist_tv.get_model().get_iter_root() == None:
+                self.playlist_tv.scroll_to_cell(cur)
+
         if iter:
             if pos == last:
                 pos -= 1
@@ -499,8 +507,7 @@ class window_main():
         selection = treeview.get_selection()
         (model, iter) = selection.get_selected()
 
-        # TODO check for button, not selection
-        if iter:
+        if not button:
             path = model.get_path(iter)
 
             cell_area = treeview.get_cell_area(path, treeview.get_column(0))
@@ -770,10 +777,8 @@ class Connection:
         except xmmsclient.sync.XMMSError:
             pass
 
-    # TODO cursor follows playback?
     def get_playlist(self, treeview):
         store = treeview.get_model()
-        #selection = treeview.get_selection()
 
         result = self.xmms.playlist_list_entries()
 
@@ -792,7 +797,6 @@ class Connection:
             store.append([bar])
             pos = pos + 1
 
-        #selection.select_path(pos_cur)
         return (pos_cur, pos)
 
     def get_info(self, id):
@@ -809,7 +813,7 @@ class Connection:
         except KeyError:
             string = "none"
 
-        return cgi.escape(string)
+        return glib.markup_escape_text(string)
 
     def get_album(self, info):
         try:
@@ -817,7 +821,7 @@ class Connection:
         except KeyError:
             string = "none"
 
-        return cgi.escape(string)
+        return glib.markup_escape_text(string)
 
     def get_title(self, info):
         try:
@@ -825,7 +829,7 @@ class Connection:
         except KeyError:
             string = "none"
 
-        return cgi.escape(string)
+        return glib.markup_escape_text(string)
 
     def get_year(self, info):
         try:
@@ -833,7 +837,7 @@ class Connection:
         except KeyError:
             string = "none"
 
-        return cgi.escape(string)
+        return glib.markup_escape_text(string)
 
     def get_track(self, info):
         try:
@@ -841,7 +845,7 @@ class Connection:
         except KeyError:
             string = "none"
 
-        return cgi.escape(string)
+        return glib.markup_escape_text(string)
 
     # TODO check error handling
     def get_playlist_cur_pos(self):
@@ -867,9 +871,9 @@ class Connection:
         for playlist in result:
             if not playlist.startswith("_"):
                 if playlist == cur:
-                    store.append(["<b>" + cgi.escape(playlist) + "</b>"])
+                    store.append(["<b>" + glib.markup_escape_text(playlist) + "</b>"])
                 else:
-                    store.append([cgi.escape(playlist)])
+                    store.append([glib.markup_escape_text(playlist)])
 
     def get_current_playlist(self):
         result = self.xmms.playlist_current_active()
