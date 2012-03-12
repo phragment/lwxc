@@ -17,14 +17,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-TODO
- - rewrite use of collections
-   connection.get_* connection.add_*
+FIXME
  - check xmms2 errors plus sync vs. async
  - check on config exceptions
- - unsure about auto scrolling
+ - fix "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
 
-later?
+TODO
  - drag & drop
    - reordering of playlist
    - add to playlist
@@ -453,6 +451,8 @@ class window_main():
 
     def on_playlist_changed(self, result):
 
+        print "on_playlist_changed enter"
+
         # poor mans lock
         if self.playlist_changing:
             return
@@ -479,6 +479,8 @@ class window_main():
             self.playlist_tv.scroll_to_cell(cur)
 
         self.playlist_changing = False
+
+        print "on_playlist_changed leave"
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -695,47 +697,37 @@ class Connection:
             self.xmms.playback_start()
 
 
-    # TODO use saved collections (add by id!)
-
     def add_artists(self, artists):
         coll = collections.IDList()
         for artist in artists:
-            coll = coll | collections.Match(field="artist", value=artist)
+            coll = coll | self.coll_artists & collections.Match(field="artist", value=artist)
 
-        result = self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
-        result.wait()
-        if result.iserror():
-            print "error: ", result.value()
+        self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
 
     def add_albums(self, albums):
         coll = collections.IDList()
         for album in albums:
-            coll = coll | collections.Match(field="album", value=album)
+            coll = coll | self.coll_albums & collections.Match(field="album", value=album)
 
-        result = self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
-        result.wait()
-        if result.iserror():
-            print "error: ", result.value()
+        self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
 
     def add_tracks(self, tracks):
+        coll = collections.IDList()
         for track in tracks:
-            coll = collections.Match(field="title", value=track)
-            #result = self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
-            result = self.xmms_async.playlist_add_collection(coll)
-            result.wait()
+            coll = coll | self.coll_tracks & collections.Match(field="title", value=track)
 
+        self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
 
-    # TODO save collections
 
     def get_artists(self, store):
         artists = collections.Match(field="artist", value="*")
+
+        self.coll_artists = artists
 
         result = self.xmms_async.coll_query_infos(artists, ["artist"], order=["artist"])
         result.wait()
         if result.iserror():
             print "error: ", result.value()
-
-        del artists
 
         store.clear()
         for artist in result.value():
@@ -747,7 +739,9 @@ class Connection:
 
         albums = collections.IDList()
         for artist in artists:
-            albums = albums | collections.Match(field="artist", value=artist)
+            albums = albums | self.coll_artists & collections.Match(field="artist", value=artist)
+
+        self.coll_albums = albums
 
         result = self.xmms_async.coll_query_infos(albums, ["album"], order=["artist", "date", "album"])
         result.wait()
@@ -764,7 +758,9 @@ class Connection:
 
         tracks = collections.IDList()
         for album in albums:
-            tracks = tracks | collections.Match(field="album", value=album)
+            tracks = tracks | self.coll_albums & collections.Match(field="album", value=album)
+
+        self.coll_tracks = tracks
 
         result = self.xmms_async.coll_query_infos(tracks, ["title"], order=['artist', 'date', 'album', 'tracknr', 'title'])
         result.wait()
@@ -784,9 +780,12 @@ class Connection:
     def get_playlist(self, treeview):
         store = treeview.get_model()
 
-        result = self.xmms.playlist_list_entries()
+        result = self.xmms_async.playlist_list_entries()
+        result.wait()
+        if result.iserror():
+            print "error: ", result.value()
 
-        if result:
+        if result.value():
             pos_cur = self.get_playlist_cur_pos()
         else:
             pos_cur = -1
@@ -794,7 +793,7 @@ class Connection:
         store.clear()
 
         pos = 0
-        for id in result:
+        for id in result.value():
             bar = self.get_title(self.get_info(id))
             if pos == pos_cur:
                 bar = "<b>" + bar + "</b>"
