@@ -77,6 +77,10 @@ class window_main():
     dialog = None
     dialog_entry = None
 
+    coll_artists = None
+    coll_albums = None
+    coll_tracks = None
+
     def __init__(self):
 
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
@@ -395,6 +399,7 @@ class window_main():
 
         connection.add_tracks(tracks)
 
+    # TODO restore selection
     def on_playlists_activated(self, treeview, iter, path):
         (model, iter) = self.playlists_sel.get_selected()
         connection.load_playlist(model.get_value(iter, 0))
@@ -689,6 +694,9 @@ class Connection:
         if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
             self.xmms.playback_start()
 
+
+    # TODO use saved collections (add by id!)
+
     def add_artists(self, artists):
         coll = collections.IDList()
         for artist in artists:
@@ -709,24 +717,16 @@ class Connection:
         if result.iserror():
             print "error: ", result.value()
 
-    def dummy(self, value):
-        print "dummy"
-
-    # TODO
-    # on tracks.size() > 1
-    # "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
     def add_tracks(self, tracks):
-#        coll = collections.IDList()
         for track in tracks:
-#            coll = coll | collections.Match(field="title", value=track)
             coll = collections.Match(field="title", value=track)
-            #self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"], cb=self.dummy)
-            #self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
-            self.xmms_async.playlist_add_collection(coll)
+            #result = self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"])
+            result = self.xmms_async.playlist_add_collection(coll)
+            result.wait()
 
-#        self.xmms_async.playlist_add_collection(coll, ["artist", "date", "album", "tracknr", "title"], cb=self.dummy)
 
-    # TODO reuse collection on get_* functions
+    # TODO save collections
+
     def get_artists(self, store):
         artists = collections.Match(field="artist", value="*")
 
@@ -734,6 +734,8 @@ class Connection:
         result.wait()
         if result.iserror():
             print "error: ", result.value()
+
+        del artists
 
         store.clear()
         for artist in result.value():
