@@ -21,6 +21,7 @@ TODO
  - rewrite use of collections
  - cursor/scrolling follows playback
  - sort playlists alphabetically
+ - check xmms2 errors
 
 later?
  - drap & drop
@@ -43,6 +44,7 @@ import re
 import ConfigParser
 from optparse import OptionParser
 import signal
+import subprocess
 
 class window_main():
 
@@ -628,22 +630,29 @@ class Connection:
     xmms_async = None
 
     def __init__(self):
-        if config.get_autostart():
-            # TODO
-            # check if running (xmms.get_fd()?)
-            print "starting xmms2"
-            os.system("xmms2-launcher")
-            # wait some time / wait for launcher exit
 
+        # sync
+        self.xmms = xmmsclient.XMMSSync("lwxc")
+
+        try:
+            self.xmms.connect(os.getenv("XMMS_PATH"))
+        except IOError, detail:
+            if config.get_autostart():
+                subprocess.check_call("xmms2-launcher")
+                # would like to use goto here
+                self.xmms.connect(os.getenv("XMMS_PATH"))
+            else:
+                print "Error:", detail
+                sys.exit(1)
+
+        # async
         self.xmms_async = xmmsclient.XMMS("lwxc")
+
         try:
             self.xmms_async.connect(os.getenv("XMMS_PATH"), disconnect_func=self.disconnect)
         except IOError, detail:
-            print "Connection failed:", detail
+            print "Error:", detail
             sys.exit(1)
-
-        self.xmms = xmmsclient.XMMSSync("lwxc")
-        self.xmms.connect(os.getenv("XMMS_PATH"))
 
         conn = xmmsclient.glib.GLibConnector(self.xmms_async)
 
