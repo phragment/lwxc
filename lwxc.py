@@ -18,8 +18,9 @@
 
 """
 FIXME
- - check xmms2 errors plus sync vs. async
- - check on config exceptions
+ - restore selection on_playlists_activated
+ - check xmms2 errors handling
+ - check use of sync / async connections
  - fix "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
 
 TODO
@@ -98,7 +99,7 @@ class window_main():
         self.window.add(vbox1)
 
         menubar = gtk.MenuBar()
-#        vbox1.pack_start(menubar, False, False, 0)
+        #vbox1.pack_start(menubar, False, False, 0)
 
         ag = gtk.AccelGroup()
         self.window.add_accel_group(ag)
@@ -270,15 +271,15 @@ class window_main():
             self.playlist_tv.scroll_to_cell(cur)
 
 
-#        hbox2 = gtk.HBox(False, 0)
-#        vbox1.pack_start(hbox2, False, False, 0)
+        #hbox2 = gtk.HBox(False, 0)
+        #vbox1.pack_start(hbox2, False, False, 0)
 
-#        seekbar = gtk.HScale()
-#        hbox2.pack_start_defaults(seekbar)
-#        seekbar.set_draw_value(False)
+        #seekbar = gtk.HScale()
+        #hbox2.pack_start_defaults(seekbar)
+        #seekbar.set_draw_value(False)
 
-#        volume = gtk.VolumeButton()
-#        hbox2.pack_start(volume, False, False, 0)
+        #volume = gtk.VolumeButton()
+        #hbox2.pack_start(volume, False, False, 0)
 
 
         vbox1.show_all()
@@ -397,7 +398,6 @@ class window_main():
 
         connection.add_tracks(tracks)
 
-    # TODO restore selection
     def on_playlists_activated(self, treeview, iter, path):
         (model, iter) = self.playlists_sel.get_selected()
         connection.load_playlist(model.get_value(iter, 0))
@@ -451,8 +451,6 @@ class window_main():
 
     def on_playlist_changed(self, result):
 
-        print "on_playlist_changed enter"
-
         # poor mans lock
         if self.playlist_changing:
             return
@@ -479,8 +477,6 @@ class window_main():
             self.playlist_tv.scroll_to_cell(cur)
 
         self.playlist_changing = False
-
-        print "on_playlist_changed leave"
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -579,7 +575,6 @@ class window_main():
         text = text.lstrip("_").strip()
 
         if text is "":
-            print "no entry"
             return
 
         connection.playlist_create(text)
@@ -853,7 +848,6 @@ class Connection:
 
         return glib.markup_escape_text(string)
 
-    # TODO check error handling
     def get_playlist_cur_pos(self):
         pos = 0
         try:
@@ -902,8 +896,6 @@ class Connection:
         self.xmms_async.broadcast_playlist_current_pos(func)
         self.xmms_async.broadcast_playlist_loaded(func)
 
-    # TODO catch error
-    # FIXME decide sync
     def remove_playlist(self, name):
         self.xmms.playlist_remove(name)
 
@@ -920,7 +912,6 @@ class Connection:
         if result.is_error():
             print "error: ", result.value()
 
-    # FIXME decide async
     def playlist_remove(self, widget, playlist):
         result = self.xmms_async.playlist_remove(playlist)
         result.wait()
@@ -953,10 +944,6 @@ def remove_pango(data):
     regex = re.compile(r'<.*?>')
     return regex.sub('', data)
 
-# TODO sanitze
-# no dir!
-# no section
-# no option
 class Config():
 
     # defaults
@@ -965,32 +952,61 @@ class Config():
     maximize = "False"
 
     def __init__(self):
-        parser = ConfigParser.SafeConfigParser()
 
-        # error check
+        filepath = os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/"
+        filename = "lwxc.conf"
+
+        if not os.path.exists(filepath):
+            os.makedirs(filepath)
+
         try:
-            config = open(os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc.conf")
+            config = open(filepath + filename, "r")
         except IOError:
-            config = open(os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc.conf", "w")
+            config = open(filepath + filename, "w+")
+            test = ConfigParser.SafeConfigParser()
+            test.optionxform = str
+            test.add_section("main")
+            test.set("main", "SERVER_AUTOSTART", self.autostart)
+            test.set("main", "SERVER_SHUTDOWN", self.autostop)
+            test.set("main", "MAXIMIZE", self.maximize)
+            test.write(config)
+            config.close()
+            return
+
+        parser = ConfigParser.SafeConfigParser()
+        parser.optionxform = str
+        parser.readfp(config)
+
+        changed = False
+
+        if not parser.has_section("main"):
             parser.add_section("main")
-            parser.set("main", "SERVER_AUTOSTART", self.autostart)
-            parser.set("main", "SERVER_AUTOSTOP", self.autostop)
-            parser.set("main", "MAXIMIZE", self.maximize)
-            parser.write(config)
-            config.close
+            changed = True
 
         try:
-            config = open(os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc.conf")
-        except IOError, detail:
-            print "Config file error: ", detail
-            sys.exit(1)
+            self.autostart = parser.get("main", "SERVER_AUTOSTART")
+        except ConfigParser.NoOptionError:
+            parser.set("main", "SERVER_AUTOSTART", self.autostart)
+            changed = True
 
-        parser.readfp(config)
-        #config.close()
+        try:
+            self.autostop = parser.get("main", "SERVER_SHUTDOWN")
+        except ConfigParser.NoOptionError:
+            parser.set("main", "SERVER_SHUTDOWN", self.autostop)
+            changed = True
 
-        self.autostart = parser.get("main", "SERVER_AUTOSTART")
-        self.autostop = parser.get("main", "SERVER_AUTOSTOP")
-        self.maximize = parser.get("main", "MAXIMIZE")
+        try:
+            self.maximize = parser.get("main", "MAXIMIZE")
+        except ConfigParser.NoOptionError:
+            parser.set("main", "MAXIMIZE", self.maximize)
+            changed = True
+
+        config.close()
+
+        if changed:
+            config = open(filepath + filename, "w+")
+            parser.write(config)
+            config.close()
 
     def get_autostart(self):
         if self.autostart == "True":
@@ -1067,6 +1083,5 @@ if __name__ == "__main__":
         loop.quit()
 
     if config.get_autostop():
-        print "stopping xmms2"
         connection.daemon_quit()
 
