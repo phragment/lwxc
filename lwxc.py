@@ -296,6 +296,8 @@ class window_main():
             self.pos_x, self.pos_y = self.window.get_position()
             self.window.hide()
         else:
+            self.window.deiconify()
+            #self.window.show()
             self.window.present()
             if self.pos_x != -1:
                 screen = self.window.get_screen()
