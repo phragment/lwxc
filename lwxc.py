@@ -19,6 +19,8 @@
 """
 FIXME
  - restore selection on_playlists_activated
+ - scroll to current playlist
+
  - check xmms2 errors handling
  - check use of sync / async connections
  - fix "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
@@ -88,9 +90,11 @@ class window_main():
         self.window.connect("configure-event", self.on_configure_event)
         self.window.connect("key-press-event", self.on_key_press_event)
         self.window.set_title("le wild xmms2 client")
-        self.window.set_icon_from_file("/usr/share/pixmaps/xmms2.svg")
+        self.window.set_icon_from_file(iconname)
         self.window.set_size_request(800, 500)
         self.window.set_position(gtk.WIN_POS_CENTER)
+        # make configurable
+        self.window.set_skip_taskbar_hint(True)
 
         if config.get_maximize():
             self.window.maximize()
@@ -297,7 +301,6 @@ class window_main():
             self.window.hide()
         else:
             self.window.deiconify()
-            #self.window.show()
             self.window.present()
             if self.pos_x != -1:
                 screen = self.window.get_screen()
@@ -545,7 +548,7 @@ class window_main():
         about_dialog.set_website("http://phragment.github.com/lwxc/")
         about_dialog.set_website_label("phragment.github.com/lwxc")
 
-        about_dialog.set_logo(gtk.gdk.pixbuf_new_from_file_at_size("/usr/share/pixmaps/xmms2.svg", 200, 200))
+        about_dialog.set_logo(gtk.gdk.pixbuf_new_from_file_at_size(iconname, 200, 200))
 
         about_dialog.run()
         about_dialog.destroy()
@@ -589,7 +592,7 @@ class TrayIcon():
 
     def __init__(self):
         self.icon = gtk.StatusIcon()
-        self.icon.set_from_file("/usr/share/pixmaps/xmms2.svg")
+        self.icon.set_from_file(iconname)
         self.icon.connect("activate", window.toggle)
         self.icon.connect("popup-menu", self.on_popup_menu)
 
@@ -1037,6 +1040,9 @@ if __name__ == "__main__":
     global connection
     global window
     global icon
+    global iconname
+
+    iconname = "/usr/share/pixmaps/lwxc.svg"
 
     parser = OptionParser()
 
