@@ -18,18 +18,16 @@
 
 """
 FIXME
- - restore selection on_playlists_activated
- - scroll to current playlist
-
  - check xmms2 errors handling
  - check use of sync / async connections
  - fix "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
 
 TODO
+ - add config options
+ - seekbar
  - drag & drop
    - reordering of playlist
    - add to playlist
- - seekbar
 """
 
 import pygtk
@@ -91,7 +89,10 @@ class window_main():
         self.window.connect("key-press-event", self.on_key_press_event)
         self.window.set_title("le wild xmms2 client")
         self.window.set_icon_from_file(iconname)
-        self.window.set_size_request(800, 500)
+        screen = self.window.get_screen()
+        width = screen.get_width() * 0.75
+        height = screen.get_height() * 0.75
+        self.window.set_size_request(int(width), int(height))
         self.window.set_position(gtk.WIN_POS_CENTER)
         # make configurable
         self.window.set_skip_taskbar_hint(True)
@@ -102,31 +103,32 @@ class window_main():
         vbox1 = gtk.VBox(False, 0)
         self.window.add(vbox1)
 
-        menubar = gtk.MenuBar()
+        # no menu at the moment, it's simply not needed
+        #menubar = gtk.MenuBar()
         #vbox1.pack_start(menubar, False, False, 0)
 
-        ag = gtk.AccelGroup()
-        self.window.add_accel_group(ag)
+        #ag = gtk.AccelGroup()
+        #self.window.add_accel_group(ag)
 
-        menubar_file = gtk.MenuItem("_File")
-        menubar.append(menubar_file)
+        #menubar_file = gtk.MenuItem("_File")
+        #menubar.append(menubar_file)
 
-        file_menu = gtk.Menu()
-        menubar_file.set_submenu(file_menu)
+        #file_menu = gtk.Menu()
+        #menubar_file.set_submenu(file_menu)
 
-        file_menu_quit = gtk.ImageMenuItem(gtk.STOCK_QUIT, ag)
-        file_menu.append(file_menu_quit)
-        file_menu_quit.connect("activate", self.quit)
+        #file_menu_quit = gtk.ImageMenuItem(gtk.STOCK_QUIT, ag)
+        #file_menu.append(file_menu_quit)
+        #file_menu_quit.connect("activate", self.quit)
 
-        menubar_help = gtk.MenuItem("_Help")
-        menubar.append(menubar_help)
+        #menubar_help = gtk.MenuItem("_Help")
+        #menubar.append(menubar_help)
 
-        help_menu = gtk.Menu()
-        menubar_help.set_submenu(help_menu)
+        #help_menu = gtk.Menu()
+        #menubar_help.set_submenu(help_menu)
 
-        help_menu_about = gtk.ImageMenuItem(gtk.STOCK_ABOUT, ag)
-        help_menu.append(help_menu_about)
-        help_menu_about.connect("activate", self.show_about_dialog)
+        #help_menu_about = gtk.ImageMenuItem(gtk.STOCK_ABOUT, ag)
+        #help_menu.append(help_menu_about)
+        #help_menu_about.connect("activate", self.show_about_dialog)
 
         hbox1 = gtk.HBox(False, 0)
         vbox1.pack_start_defaults(hbox1)
@@ -241,7 +243,9 @@ class window_main():
 
         playlists_sw.add(self.playlists_tv)
 
-        connection.get_playlists(self.playlists)
+        (cur, last) = connection.get_playlists(self.playlists)
+        if cur != -1:
+            self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
 
         hsep1 = gtk.HSeparator()
@@ -272,9 +276,10 @@ class window_main():
 
         (cur, last) = connection.get_playlist(self.playlist_tv)
         if cur != -1:
-            self.playlist_tv.scroll_to_cell(cur)
+            self.playlist_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
 
+        # no seekbar at the moment
         #hbox2 = gtk.HBox(False, 0)
         #vbox1.pack_start(hbox2, False, False, 0)
 
@@ -288,7 +293,6 @@ class window_main():
 
         vbox1.show_all()
 
-        # callbacks
         connection.setup_playlists_cb(self.on_playlists_changed)
         connection.setup_playlist_cb(self.on_playlist_changed)
 
@@ -452,14 +456,31 @@ class window_main():
             connection.remove_playlist_entry(path[0])
 
     def on_playlists_changed(self, result):
-        connection.get_playlists(self.playlists)
+        # store selection
+        selection = self.playlists_tv.get_selection()
+        (model, iter) = selection.get_selected()
+        pos = None
+        if iter:
+            pos = model.get_path(iter)[0]
+
+        (cur, last) = connection.get_playlists(self.playlists)
+
+        # restore selection
+        if iter:
+            if pos == last:
+                pos -= 1
+            if pos != -1:
+                selection.select_path(pos)
+
+        # scroll to current playlist
+        if cur != -1:
+            self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
     def on_playlist_changed(self, result):
 
         # poor mans lock
         if self.playlist_changing:
             return
-
         self.playlist_changing = True
 
         # store selection
@@ -478,9 +499,11 @@ class window_main():
             if pos != -1:
                 selection.select_path(pos)
 
+        # scroll to current track
         if cur != -1:
-            self.playlist_tv.scroll_to_cell(cur)
+            self.playlist_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
+        # poor mans lock
         self.playlist_changing = False
 
     # cannot remove current active playlist (xmms2 limitation)
@@ -777,6 +800,25 @@ class Connection:
         except xmmsclient.sync.XMMSError:
             pass
 
+    def get_playlists(self, store):
+        result = self.xmms.playlist_list()
+
+        cur = self.get_current_playlist()
+
+        store.clear()
+
+        pos = 0
+        for playlist in result:
+            if not playlist.startswith("_"):
+                if playlist == cur:
+                    store.append(["<b>" + glib.markup_escape_text(playlist) + "</b>"])
+                    pos_cur = pos
+                else:
+                    store.append([glib.markup_escape_text(playlist)])
+                pos = pos + 1
+
+        return (pos_cur, pos)
+
     def get_playlist(self, treeview):
         store = treeview.get_model()
 
@@ -866,20 +908,6 @@ class Connection:
 
         return pos
 
-    def get_playlists(self, store):
-        result = self.xmms.playlist_list()
-
-        cur = self.get_current_playlist()
-
-        store.clear()
-
-        for playlist in result:
-            if not playlist.startswith("_"):
-                if playlist == cur:
-                    store.append(["<b>" + glib.markup_escape_text(playlist) + "</b>"])
-                else:
-                    store.append([glib.markup_escape_text(playlist)])
-
     def get_current_playlist(self):
         result = self.xmms.playlist_current_active()
         return result
@@ -929,11 +957,11 @@ class Connection:
         if result.is_error():
             print "error: ", result.value()
 
-    def playlist_rename(self, widget):
-        print "to be implemented"
+#    def playlist_rename(self, widget):
+#        print "to be implemented"
 
-    def playlist_copy(self, widget):
-        print "to be implemented"
+#    def playlist_copy(self, widget):
+#        print "to be implemented"
 
     def daemon_quit(self):
         result = self.xmms_async.quit()
@@ -1085,7 +1113,10 @@ if __name__ == "__main__":
 
         loop.run()
 
-        os.remove('/tmp/lwxc.pid')
+        try:
+            os.remove('/tmp/lwxc.pid')
+        except OSError:
+            pass
 
     except KeyboardInterrupt:
         loop.quit()
