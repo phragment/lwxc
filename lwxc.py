@@ -39,7 +39,6 @@ import xmmsclient
 from xmmsclient import collections
 import xmmsclient.glib
 import gobject
-import time
 import re
 import ConfigParser
 from optparse import OptionParser
@@ -477,6 +476,13 @@ class window_main():
             self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
     def on_playlist_changed(self, result):
+        print "on playlist changed called"
+        # {u'position': 201, u'type': 0, u'id': 10, u'name': u'Default'}
+        # for all added tracks
+        #print result.value()
+
+        if result.iserror():
+            print "was an error", result.value()
 
         # poor mans lock
         if self.playlist_changing:
@@ -505,6 +511,8 @@ class window_main():
 
         # poor mans lock
         self.playlist_changing = False
+
+        print "on playlist changed exited"
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -710,14 +718,14 @@ class Connection:
     def next(self, widget):
         self.xmms.playlist_set_next_rel(1)
         self.xmms.playback_tickle()
-        if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-            self.xmms.playback_start()
+        #if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
+        #    self.xmms.playback_start()
 
     def prev(self, widget):
         self.xmms.playlist_set_next_rel(-1)
         self.xmms.playback_tickle()
-        if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-            self.xmms.playback_start()
+        #if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
+        #    self.xmms.playback_start()
 
 
     def add_artists(self, artists):
@@ -725,7 +733,9 @@ class Connection:
         for artist in artists:
             coll = coll | self.coll_artists & collections.Match(field="artist", value=artist)
 
+        print "before add coll"
         self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
+        print "after add coll"
 
     def add_albums(self, albums):
         coll = collections.IDList()
@@ -820,6 +830,7 @@ class Connection:
         return (pos_cur, pos)
 
     def get_playlist(self, treeview):
+        print "get playlist called"
         store = treeview.get_model()
 
         result = self.xmms_async.playlist_list_entries()
@@ -845,6 +856,7 @@ class Connection:
             store.append([bar])
             pos = pos + 1
 
+        print "get playlist end"
         return (pos_cur, pos)
 
     def get_info(self, id):
