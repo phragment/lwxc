@@ -18,9 +18,9 @@
 
 """
 FIXME
- - check xmms2 errors handling
- - check use of sync / async connections
- - fix "Failed in file ../src/lib/xmmstypes/value.c on  row 305"
+ - make commands sync
+   - and retrieves async
+ - check on error handling
 
 TODO
  - add config options
@@ -44,6 +44,7 @@ import ConfigParser
 from optparse import OptionParser
 import signal
 import subprocess
+import time
 
 class window_main():
 
@@ -476,17 +477,7 @@ class window_main():
             self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
     def on_playlist_changed(self, result):
-        # {u'position': 201, u'type': 0, u'id': 10, u'name': u'Default'}
-        # for all added tracks
-        #print "before lock", result.value()
-
         print "on_playlist_changed called"
-
-        # poor mans lock
-        if self.playlist_changing:
-            print "call blocked"
-            return
-        self.playlist_changing = True
 
         # store selection
         selection = self.playlist_tv.get_selection()
@@ -510,9 +501,6 @@ class window_main():
 
         print "on_playlist_changed leave"
 
-        # poor mans lock
-        self.playlist_changing = False
-
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
 
@@ -533,14 +521,6 @@ class window_main():
             remove = gtk.MenuItem("remove " + playlist)
             remove.connect("activate", connection.playlist_remove, playlist)
             menu.append(remove)
-
-            #copy = gtk.MenuItem("copy " + playlist)
-            #copy.connect("activate", self.to_be_implemented_handler)
-            #menu.append(copy)
-
-            #rename = gtk.MenuItem("rename " + playlist)
-            #rename.connect("activate", self.to_be_implemented_handler)
-            #menu.append(rename)
 
         menu.show_all()
 
@@ -703,28 +683,21 @@ class Connection:
         conn = xmmsclient.glib.GLibConnector(self.xmms_async)
 
     def play(self, widget):
-        try:
-            self.xmms.playback_start()
-        except XMMSError, detail:
-            print "Error: ", detail.message
+        self.xmms_async.playback_start()
 
     def pause(self, widget):
-        self.xmms.playback_pause()
+        self.xmms_async.playback_pause()
 
     def stop(self, widget):
-        self.xmms.playback_stop()
+        self.xmms_async.playback_stop()
 
     def next(self, widget):
-        self.xmms.playlist_set_next_rel(1)
-        self.xmms.playback_tickle()
-        #if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-        #    self.xmms.playback_start()
+        self.xmms_async.playlist_set_next_rel(1)
+        self.xmms_async.playback_tickle()
 
     def prev(self, widget):
-        self.xmms.playlist_set_next_rel(-1)
-        self.xmms.playback_tickle()
-        #if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-        #    self.xmms.playback_start()
+        self.xmms_async.playlist_set_next_rel(-1)
+        self.xmms_async.playback_tickle()
 
 
     def add_artists(self, artists):
@@ -836,12 +809,10 @@ class Connection:
 
         self.xmms_async.coll_query(collections.Order(collections.Order(collections.Order(collections.Order(collections.Order(tracks, field="title"), field="tracknr"), field="album"), field="date"), field="artist"), fetch, get_tracks_done)
 
-    def load_playlist(self, meh):
-        try:
-            self.xmms.playlist_load(meh)
-        except xmmsclient.sync.XMMSError:
-            pass
+    def load_playlist(self, name):
+        self.xmms_async.playlist_load(name)
 
+    # make async
     def get_playlists(self, store):
         result = self.xmms.playlist_list()
 
@@ -861,74 +832,45 @@ class Connection:
 
         return (pos_cur, pos)
 
-    def get_playlist_new(self, treeview):
-        store = treeview.get_model()
-
-        def get_playlist_done(result):
-            if result.is_error():
-                print result.value()
-            else:
-                #print result.value()
-
-                # get current playlist position
-                try:
-                    result2 = self.xmms.playlist_current_pos()
-                    cur = result2["position"]
-                except xmmsclient.sync.XMMSError:
-                    cur = -1
-                print cur
-
-                # 
-                store.clear()
-
-                pos = 0
-                for id in result.value():
-                    bar = self.get_title(self.get_info(id))
-                    if pos == cur:
-                        bar = "<b>" + bar + "</b>"
-                    bar += "\n<small>from <i>" + self.get_album(self.get_info(id)) + "</i>"
-                    bar += " by <i>" + self.get_artist(self.get_info(id)) + "</i></small>"
-                    store.append([bar])
-                    pos = pos + 1
-
-        self.xmms_async.playlist_list_entries(cb=get_playlist_done)
-        return (-1, -1)
-
+    # make async
     def get_playlist(self, treeview):
         store = treeview.get_model()
 
-        result = self.xmms_async.playlist_list_entries()
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
+        # get playlist entries
+        try:
+            result = self.xmms.playlist_list_entries()
+        except xmmsclient.sync.XMMSError:
+            print "error: couldn't list playlist"
+            return (-1, -1)
 
-        if result.value():
-            pos_cur = self.get_playlist_cur_pos()
-        else:
-            pos_cur = -1
+        # get current playlist position
+        cur = self.get_playlist_cur_pos()
 
         store.clear()
 
         pos = 0
-        for id in result.value():
-            bar = self.get_title(self.get_info(id))
-            if pos == pos_cur:
-                bar = "<b>" + bar + "</b>"
-            bar += "\n<small>from <i>" + self.get_album(self.get_info(id)) + "</i>"
-            bar += " by <i>" + self.get_artist(self.get_info(id)) + "</i></small>"
+        for track in result:
+            info = self.get_info(track)
 
-            store.append([bar])
+            entry = self.get_title(info)
+            if pos == cur:
+                entry = "<b>" + entry + "</b>"
+            entry += "\n<small>from <i>" + self.get_album(info) + "</i>"
+            entry += " by <i>" + self.get_artist(info) + "</i></small>"
+
+            store.append([entry])
             pos = pos + 1
 
-        return (pos_cur, pos)
+        return (cur, pos)
 
-    def get_info(self, id):
-        result = self.xmms_async.medialib_get_info(id)
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
+    # make async
+    def get_info(self, track):
+        try:
+            result = self.xmms.medialib_get_info(track)
+        except xmmsclient.sync.XMMSError:
+            result = {}
 
-        return result.value()
+        return result
 
     def get_artist(self, info):
         try:
@@ -970,28 +912,27 @@ class Connection:
 
         return glib.markup_escape_text(string)
 
+    # make async
     def get_playlist_cur_pos(self):
-        pos = 0
+        pos = -1
         try:
             result = self.xmms.playlist_current_pos()
-            try:
-                pos = result["position"]
-            except xmmsclient.sync.XMMSError:
-                pos = 0
+            pos = result["position"]
         except xmmsclient.sync.XMMSError:
             pass
 
         return pos
 
+    # make async
     def get_current_playlist(self):
         result = self.xmms.playlist_current_active()
         return result
 
     def jump_to(self, pos):
-        self.xmms.playlist_set_next(pos)
-        self.xmms.playback_tickle()
-        if self.xmms.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-            self.xmms.playback_start()
+        self.xmms_async.playlist_set_next(pos)
+        self.xmms_async.playback_tickle()
+        if self.xmms_async.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
+            self.xmms_async.playback_start()
 
     def setup_playlists_cb(self, func):
         # add/remove playlist
@@ -1005,46 +946,28 @@ class Connection:
         self.xmms_async.broadcast_playlist_loaded(func)
 
     def remove_playlist(self, name):
-        self.xmms.playlist_remove(name)
+        self.xmms_async.playlist_remove(name)
 
     def remove_playlist_entry(self, position):
-        self.xmms.playlist_remove_entry(position)
+        self.xmms_async.playlist_remove_entry(position)
 
     def remove_playlist_entries(self, positions):
         for position in positions:
-            self.xmms.playlist_remove_entry(position)
+            self.xmms_async.playlist_remove_entry(position)
 
     def playlist_clear(self, widget, playlist):
-        result = self.xmms_async.playlist_clear(playlist)
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
+        self.xmms_async.playlist_clear(playlist)
 
     def playlist_remove(self, widget, playlist):
-        result = self.xmms_async.playlist_remove(playlist)
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
+        self.xmms_async.playlist_remove(playlist)
 
     def playlist_create(self, playlist):
-        result = self.xmms_async.playlist_create(playlist)
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
-
-#    def playlist_rename(self, widget):
-#        print "to be implemented"
-
-#    def playlist_copy(self, widget):
-#        print "to be implemented"
+        self.xmms_async.playlist_create(playlist)
 
     def daemon_quit(self):
-        result = self.xmms_async.quit()
-        result.wait()
-        if result.is_error():
-            print "error: ", result.value()
+        self.xmms_async.quit()
 
-    def disconnect(self, res):
+    def disconnect(self, xmms_loop):
         print "error: xmms2d shutdown"
         loop.quit()
 
