@@ -476,16 +476,15 @@ class window_main():
             self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
     def on_playlist_changed(self, result):
-        print "on playlist changed called"
         # {u'position': 201, u'type': 0, u'id': 10, u'name': u'Default'}
         # for all added tracks
-        #print result.value()
+        #print "before lock", result.value()
 
-        if result.iserror():
-            print "was an error", result.value()
+        print "on_playlist_changed called"
 
         # poor mans lock
         if self.playlist_changing:
+            print "call blocked"
             return
         self.playlist_changing = True
 
@@ -509,10 +508,10 @@ class window_main():
         if cur != -1:
             self.playlist_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
+        print "on_playlist_changed leave"
+
         # poor mans lock
         self.playlist_changing = False
-
-        print "on playlist changed exited"
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -733,9 +732,7 @@ class Connection:
         for artist in artists:
             coll = coll | self.coll_artists & collections.Match(field="artist", value=artist)
 
-        print "before add coll"
         self.xmms_async.playlist_add_collection(coll, ['artist', 'date', 'album', 'tracknr', 'title'])
-        print "after add coll"
 
     def add_albums(self, albums):
         coll = collections.IDList()
@@ -754,17 +751,28 @@ class Connection:
 
     def get_artists(self, store):
         artists = collections.Match(field="artist", value="*")
-
         self.coll_artists = artists
 
-        result = self.xmms_async.coll_query_infos(artists, ["artist"], order=["artist"])
-        result.wait()
-        if result.iserror():
-            print "error: ", result.value()
+        fetch = {
+            "type": "cluster-list",
+            "cluster-by": "value",
+            "cluster-field": "artist",
+            "data": {
+                "type": "metadata",
+                "get": ["value"],
+                "fields": ["artist"]
+            }
+        }
 
-        store.clear()
-        for artist in result.value():
-            store.append([artist["artist"]])
+        def get_artists_done(result):
+            if result.is_error():
+                print result.value()
+            else:
+                store.clear()
+                for artist in result.value():
+                    store.append([artist])
+
+        self.xmms_async.coll_query(collections.Order(artists, field="artist"), fetch, get_artists_done)
 
     def get_albums(self, store, artists):
         if not store:
@@ -776,14 +784,26 @@ class Connection:
 
         self.coll_albums = albums
 
-        result = self.xmms_async.coll_query_infos(albums, ["album"], order=["artist", "date", "album"])
-        result.wait()
-        if result.iserror():
-            print "error: ", result.value()
+        fetch = {
+            "type": "cluster-list",
+            "cluster-by": "value",
+            "cluster-field": "album",
+            "data": {
+                "type": "metadata",
+                "get": ["value"],
+                "fields": ["album"]
+            }
+        }
 
-        store.clear()
-        for album in result.value():
-            store.append([album["album"]])
+        def get_albums_done(result):
+            if result.is_error():
+                print result.value()
+            else:
+                store.clear()
+                for album in result.value():
+                    store.append([album])
+
+        self.xmms_async.coll_query(collections.Order(collections.Order(collections.Order(albums, field="album"), field="date"), field="artist"), fetch, get_albums_done)
 
     def get_tracks(self, store, albums):
         if not store:
@@ -795,14 +815,26 @@ class Connection:
 
         self.coll_tracks = tracks
 
-        result = self.xmms_async.coll_query_infos(tracks, ["title"], order=['artist', 'date', 'album', 'tracknr', 'title'])
-        result.wait()
-        if result.iserror():
-            print "error: ", result.value()
+        fetch = {
+            "type": "cluster-list",
+            "cluster-by": "value",
+            "cluster-field": "title",
+            "data": {
+                "type": "metadata",
+                "get": ["value"],
+                "fields": ["title"]
+            }
+        }
 
-        store.clear()
-        for title in result.value():
-            store.append([title["title"]])
+        def get_tracks_done(result):
+            if result.is_error():
+                print result.value()
+            else:
+                store.clear()
+                for track in result.value():
+                    store.append([track])
+
+        self.xmms_async.coll_query(collections.Order(collections.Order(collections.Order(collections.Order(collections.Order(tracks, field="title"), field="tracknr"), field="album"), field="date"), field="artist"), fetch, get_tracks_done)
 
     def load_playlist(self, meh):
         try:
@@ -829,13 +861,45 @@ class Connection:
 
         return (pos_cur, pos)
 
+    def get_playlist_new(self, treeview):
+        store = treeview.get_model()
+
+        def get_playlist_done(result):
+            if result.is_error():
+                print result.value()
+            else:
+                #print result.value()
+
+                # get current playlist position
+                try:
+                    result2 = self.xmms.playlist_current_pos()
+                    cur = result2["position"]
+                except xmmsclient.sync.XMMSError:
+                    cur = -1
+                print cur
+
+                # 
+                store.clear()
+
+                pos = 0
+                for id in result.value():
+                    bar = self.get_title(self.get_info(id))
+                    if pos == cur:
+                        bar = "<b>" + bar + "</b>"
+                    bar += "\n<small>from <i>" + self.get_album(self.get_info(id)) + "</i>"
+                    bar += " by <i>" + self.get_artist(self.get_info(id)) + "</i></small>"
+                    store.append([bar])
+                    pos = pos + 1
+
+        self.xmms_async.playlist_list_entries(cb=get_playlist_done)
+        return (-1, -1)
+
     def get_playlist(self, treeview):
-        print "get playlist called"
         store = treeview.get_model()
 
         result = self.xmms_async.playlist_list_entries()
         result.wait()
-        if result.iserror():
+        if result.is_error():
             print "error: ", result.value()
 
         if result.value():
@@ -856,13 +920,12 @@ class Connection:
             store.append([bar])
             pos = pos + 1
 
-        print "get playlist end"
         return (pos_cur, pos)
 
     def get_info(self, id):
         result = self.xmms_async.medialib_get_info(id)
         result.wait()
-        if result.iserror():
+        if result.is_error():
             print "error: ", result.value()
 
         return result.value()
