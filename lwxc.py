@@ -18,9 +18,8 @@
 
 """
 FIXME
- - make commands sync
-   - and retrieves async
  - check on error handling
+ - use ["partofset"]
 
 TODO
  - add config options
@@ -243,9 +242,7 @@ class window_main():
 
         playlists_sw.add(self.playlists_tv)
 
-        (cur, last) = connection.get_playlists(self.playlists)
-        if cur != -1:
-            self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
+        connection.get_playlists()
 
 
         hsep1 = gtk.HSeparator()
@@ -274,9 +271,7 @@ class window_main():
 
         self.playlist_sw.add(self.playlist_tv)
 
-        (cur, last) = connection.get_playlist(self.playlist_tv)
-        if cur != -1:
-            self.playlist_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
+        connection.get_playlist()
 
 
         # no seekbar at the moment
@@ -456,50 +451,10 @@ class window_main():
             connection.remove_playlist_entry(path[0])
 
     def on_playlists_changed(self, result):
-        # store selection
-        selection = self.playlists_tv.get_selection()
-        (model, iter) = selection.get_selected()
-        pos = None
-        if iter:
-            pos = model.get_path(iter)[0]
-
-        (cur, last) = connection.get_playlists(self.playlists)
-
-        # restore selection
-        if iter:
-            if pos == last:
-                pos -= 1
-            if pos != -1:
-                selection.select_path(pos)
-
-        # scroll to current playlist
-        if cur != -1:
-            self.playlists_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
+        connection.get_playlists()
 
     def on_playlist_changed(self, result):
-        print "on_playlist_changed called"
-
-        # store selection
-        selection = self.playlist_tv.get_selection()
-        (model, iter) = selection.get_selected()
-        pos = None
-        if iter:
-            pos = model.get_path(iter)[0]
-
-        (cur, last) = connection.get_playlist(self.playlist_tv)
-
-        # restore selection
-        if iter:
-            if pos == last:
-                pos -= 1
-            if pos != -1:
-                selection.select_path(pos)
-
-        # scroll to current track
-        if cur != -1:
-            self.playlist_tv.scroll_to_cell(cur, None, True, 0.45, 0.0)
-
-        print "on_playlist_changed leave"
+        connection.get_playlist()
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -812,121 +767,151 @@ class Connection:
     def load_playlist(self, name):
         self.xmms_async.playlist_load(name)
 
-    # make async
-    def get_playlists(self, store):
-        result = self.xmms.playlist_list()
+    def get_playlists(self):
+        self.xmms_async.playlist_current_active(cb=self.got_current_playlist)
 
-        cur = self.get_current_playlist()
+    def got_current_playlist(self, result):
+        if result.is_error():
+            print result.value()
+        else:
+            self.current_playlist = result.value()
+            self.xmms_async.playlist_list(cb=self.got_playlists)
 
-        store.clear()
+    def got_playlists(self, result):
+        store = window.playlists;
+        view = window.playlists_tv;
+        current = self.current_playlist
+        selection = window.playlists_sel
 
-        pos = 0
-        for playlist in result:
-            if not playlist.startswith("_"):
-                if playlist == cur:
-                    store.append(["<b>" + glib.markup_escape_text(playlist) + "</b>"])
-                    pos_cur = pos
-                else:
-                    store.append([glib.markup_escape_text(playlist)])
+        if result.is_error():
+            print result.value()
+        else:
+            playlists = result.value()
+
+            # store selection
+            (model, iter) = selection.get_selected()
+            if iter:
+                path = store.get_path(iter)
+
+            store.clear()
+
+            pos = 0
+            for playlist in playlists:
+                if not playlist.startswith("_"):
+                    if playlist == current:
+                        store.append(["<b>" + glib.markup_escape_text(playlist) + "</b>"])
+                        cur = pos
+                    else:
+                        store.append([glib.markup_escape_text(playlist)])
+                    pos = pos + 1
+
+            # restore selection
+            if iter:
+                if path[0] == pos:
+                    path[0] -= 1
+                if path[0] != -1:
+                    selection.select_path(path)
+
+            # scroll to current playlist
+            view.scroll_to_cell(cur, None, True, 0.45, 0.0)
+
+    def get_playlist(self):
+        self.xmms_async.playlist_current_pos(cb=self.got_current_track)
+
+    def got_current_track(self, result):
+        if result.is_error():
+            # no current entry
+            #print result.value()
+            self.current_track = -1
+        else:
+            self.current_track = result.value()
+        self.xmms_async.playlist_list_entries(cb=self.got_ids)
+
+    def got_ids(self, result):
+        if result.is_error():
+            print result.value()
+        else:
+            ids = result.value()
+
+            fetch = {
+                "type": "cluster-list",
+                "cluster-by": "position",
+                "cluster-field": "",
+                "data": {
+                    "type": "metadata",
+                    "get": ["value"],
+                    "fields": ["artist", "album", "title"],
+                    "aggregate": "list"
+                }
+            }
+
+            self.xmms_async.coll_query(collections.IDList(ids), fetch, self.got_tracks)
+
+    def got_tracks(self, result):
+        store = window.playlist_tv.get_model()
+        view = window.playlist_tv
+        current = self.current_track
+        selection = window.playlist_tv.get_selection()
+
+        if result.is_error():
+            print result.value()
+        else:
+            tracks = result.value()
+            #print tracks
+
+            # store selection
+            (model, iter) = selection.get_selected()
+            if iter:
+                path = store.get_path(iter)
+
+            store.clear()
+
+            pos = 0
+            for track in tracks:
+                entry = self.get_title(track)
+                if pos == current:
+                    entry = "<b>" + entry + "</b>"
+                entry += "\n<small>from <i>" + self.get_album(track) + "</i>"
+                entry += " by <i>" + self.get_artist(track) + "</i></small>"
+
+                store.append([entry])
                 pos = pos + 1
 
-        return (pos_cur, pos)
+            # restore selection
+            if iter:
+                if path[0] == pos:
+                    path[0] -= 1
+                if path[0] != -1:
+                    print path
+                    selection.select_path(path)
 
-    # make async
-    def get_playlist(self, treeview):
-        store = treeview.get_model()
-
-        # get playlist entries
-        try:
-            result = self.xmms.playlist_list_entries()
-        except xmmsclient.sync.XMMSError:
-            print "error: couldn't list playlist"
-            return (-1, -1)
-
-        # get current playlist position
-        cur = self.get_playlist_cur_pos()
-
-        store.clear()
-
-        pos = 0
-        for track in result:
-            info = self.get_info(track)
-
-            entry = self.get_title(info)
-            if pos == cur:
-                entry = "<b>" + entry + "</b>"
-            entry += "\n<small>from <i>" + self.get_album(info) + "</i>"
-            entry += " by <i>" + self.get_artist(info) + "</i></small>"
-
-            store.append([entry])
-            pos = pos + 1
-
-        return (cur, pos)
-
-    # make async
-    def get_info(self, track):
-        try:
-            result = self.xmms.medialib_get_info(track)
-        except xmmsclient.sync.XMMSError:
-            result = {}
-
-        return result
+            # scroll to current track
+            if current != -1:
+                view.scroll_to_cell(current, None, True, 0.45, 0.0)
 
     def get_artist(self, info):
         try:
-            string = info["artist"]
-        except KeyError:
+            string = info[0]
+        except IndexError:
             string = "none"
 
         return glib.markup_escape_text(string)
 
     def get_album(self, info):
         try:
-            string = info["album"]
-        except KeyError:
+            string = info[1]
+        except IndexError:
             string = "none"
 
         return glib.markup_escape_text(string)
 
     def get_title(self, info):
         try:
-            string = info["title"]
-        except KeyError:
+            string = info[2]
+        except IndexError:
             string = "none"
 
         return glib.markup_escape_text(string)
-
-    def get_year(self, info):
-        try:
-            string = info["date"]
-        except KeyError:
-            string = "none"
-
-        return glib.markup_escape_text(string)
-
-    def get_track(self, info):
-        try:
-            string = info["tracknr"]
-        except KeyError:
-            string = "none"
-
-        return glib.markup_escape_text(string)
-
-    # make async
-    def get_playlist_cur_pos(self):
-        pos = -1
-        try:
-            result = self.xmms.playlist_current_pos()
-            pos = result["position"]
-        except xmmsclient.sync.XMMSError:
-            pass
-
-        return pos
-
-    # make async
-    def get_current_playlist(self):
-        result = self.xmms.playlist_current_active()
-        return result
 
     def jump_to(self, pos):
         self.xmms_async.playlist_set_next(pos)
