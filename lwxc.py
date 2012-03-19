@@ -454,7 +454,9 @@ class window_main():
         connection.get_playlists()
 
     def on_playlist_changed(self, result):
-        connection.get_playlist()
+        # meh
+        if not connection.update:
+            connection.get_playlist()
 
     # cannot remove current active playlist (xmms2 limitation)
     def on_playlists_menu(self, treeview, button, time, playlist):
@@ -607,33 +609,24 @@ class TrayIcon():
 
 class Connection:
 
-    xmms = None
     xmms_async = None
+
+    update = False
 
     def __init__(self):
 
-        # sync
-        self.xmms = xmmsclient.XMMSSync("lwxc")
-
-        try:
-            self.xmms.connect(os.getenv("XMMS_PATH"))
-        except IOError, detail:
-            if config.get_autostart():
-                subprocess.check_call("xmms2-launcher")
-                # would like to use goto here
-                self.xmms.connect(os.getenv("XMMS_PATH"))
-            else:
-                print "Error:", detail
-                sys.exit(1)
-
-        # async
         self.xmms_async = xmmsclient.XMMS("lwxc")
 
         try:
             self.xmms_async.connect(os.getenv("XMMS_PATH"), disconnect_func=self.disconnect)
         except IOError, detail:
-            print "Error:", detail
-            sys.exit(1)
+            if config.get_autostart():
+                subprocess.check_call("xmms2-launcher")
+                # would like to use goto here
+                self.xmms_async.connect(os.getenv("XMMS_PATH"), disconnect_func=self.disconnect)
+            else:
+                print "Error:", detail
+                sys.exit(1)
 
         conn = xmmsclient.glib.GLibConnector(self.xmms_async)
 
@@ -791,7 +784,7 @@ class Connection:
             # store selection
             (model, iter) = selection.get_selected()
             if iter:
-                path = store.get_path(iter)
+                path = store.get_path(iter)[0]
 
             store.clear()
 
@@ -807,9 +800,9 @@ class Connection:
 
             # restore selection
             if iter:
-                if path[0] == pos:
-                    path[0] -= 1
-                if path[0] != -1:
+                if path == pos:
+                    path -= 1
+                if path != -1:
                     selection.select_path(path)
 
             # scroll to current playlist
@@ -824,7 +817,8 @@ class Connection:
             #print result.value()
             self.current_track = -1
         else:
-            self.current_track = result.value()
+            self.current_track = result.value()["position"]
+
         self.xmms_async.playlist_list_entries(cb=self.got_ids)
 
     def got_ids(self, result):
@@ -857,12 +851,12 @@ class Connection:
             print result.value()
         else:
             tracks = result.value()
-            #print tracks
 
             # store selection
             (model, iter) = selection.get_selected()
+            path = -1
             if iter:
-                path = store.get_path(iter)
+                path = store.get_path(iter)[0]
 
             store.clear()
 
@@ -879,15 +873,16 @@ class Connection:
 
             # restore selection
             if iter:
-                if path[0] == pos:
-                    path[0] -= 1
-                if path[0] != -1:
-                    print path
+                if path == pos:
+                    path -= 1
+                if path != -1:
                     selection.select_path(path)
 
             # scroll to current track
             if current != -1:
                 view.scroll_to_cell(current, None, True, 0.45, 0.0)
+
+            self.update = False
 
     def get_artist(self, info):
         try:
