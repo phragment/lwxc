@@ -16,19 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""
-FIXME
- - check on error handling
- - use ["partofset"]
-
-TODO
- - add config options
- - seekbar
- - drag & drop
-   - reordering of playlist
-   - add to playlist
-"""
-
 import os
 import re
 import signal
@@ -58,6 +45,7 @@ class window_main():
     playlists = None
     playlists_sel = None
     playlists_tv = None
+    playlists_sw = None
     playlist = None
     playlist_tv = None
     playlist_sw = None
@@ -191,15 +179,15 @@ class window_main():
         vbox2 = Gtk.VBox(False, 0)
         hbox1.pack_end(vbox2, True, True, 0)
 
-        playlists_sw = Gtk.ScrolledWindow()
-        playlists_sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        vbox2.pack_start(playlists_sw, False, False, 0)
+        self.playlists_sw = Gtk.ScrolledWindow()
+        self.playlists_sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        vbox2.pack_start(self.playlists_sw, False, False, 0)
 
 
         self.playlists_tv = Gtk.TreeView()
 
         cel = Gtk.CellRendererText()
-        col = Gtk.TreeViewColumn("Artists", cel, markup=0)
+        col = Gtk.TreeViewColumn("Playlists", cel, markup=0)
         self.playlists_tv.append_column(col)
         self.playlists_tv.set_headers_visible(False)
 
@@ -213,7 +201,7 @@ class window_main():
         self.playlists_tv.connect("button-press-event", self.on_playlists_button_press)
         self.playlists_tv.connect("popup-menu", self.on_playlists_popup_menu)
 
-        playlists_sw.add(self.playlists_tv)
+        self.playlists_sw.add(self.playlists_tv)
 
         connection.get_playlists()
 
@@ -288,22 +276,15 @@ class window_main():
         if event.new_window_state & Gdk.WindowState.ICONIFIED:
             self.window.hide()
 
-    # fixme
     def on_configure_event(self, widget, event):
-        if not self.playlists_tv:
+        if not self.playlists_sw:
             return
-
-        print("configure event, rescaling playlist view")
 
         (width, height) = self.window.get_size()
 
-        print(width, height)
+        new_height = int(height / 100 * 15)
 
-        new_height = height/100*15
-
-        print(new_height)
-
-        self.playlists_tv.set_size_request(0, int(new_height))
+        self.playlists_sw.set_min_content_height(new_height)
 
     def on_key_press_event(self, window, event):
 
@@ -564,8 +545,7 @@ class TrayIcon():
         stop.connect("activate", connection.stop)
         self.menu.append(stop)
 
-        #sep1 = Gtk.SeparatorMenuItem()
-        sep1 = Gtk.MenuItem()
+        sep1 = Gtk.SeparatorMenuItem()
         self.menu.append(sep1)
 
         prev = Gtk.MenuItem("Prev")
@@ -599,8 +579,6 @@ class TrayIcon():
  A GLib connector for PyGTK - to use with your cool PyGTK xmms2 client.
  Tobias Rundstrom <tru@xmms.org>
  Raphaël Bois <virtualdust@gmail.com>
-
- Just create the GLibConnector() class with a xmmsclient as argument
 
  rewritten to use with gi.repository.GObject
 """
@@ -851,8 +829,6 @@ class Connection:
 
     def got_current_track(self, result):
         if result.is_error():
-            # no current entry
-            #print result.value()
             self.current_track = -1
         else:
             self.current_track = result.value()["position"]
@@ -916,7 +892,6 @@ class Connection:
                     selection.select_path(path)
 
             # scroll to current track
-            # fixme, this doesn't set anyone
             if current != -1:
                 view.scroll_to_cell(current, None, True, 0.45, 0.0)
 
