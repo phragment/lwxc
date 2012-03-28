@@ -1087,18 +1087,6 @@ if __name__ == "__main__":
 
     pid_file = config_path + options.instance + ".pid"
 
-    if options.toggle:
-        try:
-            pidfile = open(pid_file, 'r')
-        except IOError:
-            print("error")
-            sys.exit(1)
-
-        os.kill(int(pidfile.readline()), signal.SIGUSR1)
-        pidfile.close()
-
-        sys.exit(0)
-
 
     if not os.path.exists(config_path):
         os.makedirs(config_path)
