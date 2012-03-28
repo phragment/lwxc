@@ -66,7 +66,7 @@ class window_main():
     coll_albums = None
     coll_tracks = None
 
-    def __init__(self):
+    def __init__(self, instance):
 
         self.window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
         self.window.connect("delete-event", self.on_delete_event)
@@ -75,6 +75,7 @@ class window_main():
         self.window.connect("key-press-event", self.on_key_press_event)
         self.window.set_title("le wild xmms2 client")
         self.window.set_icon_from_file(iconname)
+        self.window.set_wmclass(instance, "LWXC")
         screen = self.window.get_screen()
         width = screen.get_width() * 0.75
         height = screen.get_height() * 0.75
@@ -240,7 +241,7 @@ class window_main():
         #vbox1.pack_start(hbox2, False, False, 0)
 
         #seekbar = Gtk.HScale()
-        #hbox2.pack_start_defaults(seekbar)
+        #hbox2.pack_start(seekbar, True, True, 0)
         #seekbar.set_draw_value(False)
 
         #volume = Gtk.VolumeButton()
@@ -978,18 +979,12 @@ class Config():
     maximize = "False"
     skip_taskbar = "False"
 
-    def __init__(self):
-
-        filepath = os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/"
-        filename = "lwxc.conf"
-
-        if not os.path.exists(filepath):
-            os.makedirs(filepath)
+    def __init__(self, filename):
 
         try:
-            config = open(filepath + filename, "r")
+            config = open(filename, "r")
         except IOError:
-            config = open(filepath + filename, "w+")
+            config = open(filename, "w+")
             test = configparser.SafeConfigParser()
             test.optionxform = str
             test.add_section("main")
@@ -1038,7 +1033,7 @@ class Config():
         config.close()
 
         if changed:
-            config = open(filepath + filename, "w+")
+            config = open(filename, "w+")
             parser.write(config)
             config.close()
 
@@ -1075,23 +1070,28 @@ if __name__ == "__main__":
     global connection
     global window
     global icon
-    global iconname
 
+    global iconname
     iconname = "/usr/share/pixmaps/lwxc.svg"
+
+    #global config_path
+    config_path = os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc/"
 
     parser = optparse.OptionParser()
 
-    parser.add_option("-t", "--toggle",
-                      action="store_true", dest="toggle", default=False,
-                      help="toggle window visibility")
+    parser.add_option("-i", "--instance",
+                      action="store", dest="instance", default="default",
+                      help="name of instance")
 
     (options, args) = parser.parse_args()
 
+    pid_file = config_path + options.instance + ".pid"
 
     if options.toggle:
         try:
-            pidfile = open('/tmp/lwxc.pid', 'r')
+            pidfile = open(pid_file, 'r')
         except IOError:
+            print("error")
             sys.exit(1)
 
         os.kill(int(pidfile.readline()), signal.SIGUSR1)
@@ -1100,33 +1100,65 @@ if __name__ == "__main__":
         sys.exit(0)
 
 
+    if not os.path.exists(config_path):
+        os.makedirs(config_path)
+
+    # handle pid file
     try:
-        config = Config()
+        pid_fd = os.open(pid_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o0600)
+    except OSError:
+        #print("pidfile already exists")
+        try:
+            pidfile = open(pid_file, 'r')
+        except IOError:
+            print("error opening pidfile")
+            sys.exit(1)
+        try:
+            #print("going to toggle")
+            os.kill(int(pidfile.readline()), signal.SIGUSR1)
+            pidfile.close()
+            sys.exit(0)
+        except OSError:
+            #print("no instance is running")
+            try:
+                os.remove(pid_file)
+            except OSError:
+                print("error removing pidfile")
+                sys.exit(1)
+            try:
+                pid_fd = os.open(pid_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o0600)
+            except OSError:
+                print("persistent error with pidfile, giving up")
+                sys.exit(1)
+
+    pid = os.fdopen(pid_fd, 'w')
+    try:
+        pid.write(str(os.getpid()))
+        pid.close()
+    except IOError:
+        pass
+
+
+    try:
+        config = Config(config_path + options.instance + ".conf")
 
         loop = GObject.MainLoop(None, False)
 
         connection = Connection()
-        window = window_main()
+        window = window_main(options.instance)
         icon = TrayIcon()
-
-        try:
-            pidfile = open('/tmp/lwxc.pid', 'w')
-            pidfile.write(str(os.getpid()))
-            pidfile.close()
-        except IOError:
-            pass
 
         signal.signal(signal.SIGUSR1, signal_handler)
 
         loop.run()
 
-        try:
-            os.remove('/tmp/lwxc.pid')
-        except OSError:
-            pass
-
     except KeyboardInterrupt:
         loop.quit()
+
+    try:
+        os.remove(pid_file)
+    except OSError:
+        pass
 
     if config.get_autostop():
         connection.daemon_quit()

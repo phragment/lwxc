@@ -1,8 +1,10 @@
-My english teacher always told me: "State the obvious."
-So: le wild XMMS2 client is a simple media library browser for XMMS2, with a focus on keyboard operability.
+le wild XMMS2 client is a simple media library browser for XMMS2, with a focus on keyboard operability.
+
+The window is now single instance, so calling it again will only bring up the old window.
+To have multiple instances running you can use "lwxc.py -i <instance_name>".
 
 Dependencies are:
 - python3
-- python-gobject (reasonable version, 2.28 or later)
-- xmms2 (compiled with python3 bindings)
+- python-gobject (2.28 or later)
+- xmms2 (compiled from git devel branch with python3 bindings)
 
