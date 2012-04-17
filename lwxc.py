@@ -26,7 +26,7 @@ import optparse
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GObject, GLib
+from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 
 import xmmsclient
 import xmmsclient.collections
@@ -204,6 +204,9 @@ class window_main():
 
         self.playlists_sw.add(self.playlists_tv)
 
+        # focus
+        self.playlists_tv.grab_focus()
+
         connection.get_playlists()
 
 
@@ -369,6 +372,9 @@ class window_main():
     def on_playlists_activated(self, treeview, path, column):
         connection.load_playlist(get_selected_entry(treeview))
 
+        # focus
+        self.playlist_tv.grab_focus()
+
     def on_playlist_activated(self, treeview, path, column):
         connection.jump_to(get_selected_entry_position(treeview))
 
@@ -428,7 +434,7 @@ class window_main():
             menu.append(clear)
 
             remove = Gtk.MenuItem("remove " + playlist)
-            remove.connect("activate", connection.playlist_remove, playlist)
+            remove.connect("activate", connection.remove_playlist, playlist)
             menu.append(remove)
 
         menu.show_all()
@@ -799,9 +805,9 @@ class Connection:
             playlists = result.value()
 
             # store selection
-            (model, treeiter) = selection.get_selected()
-            if treeiter:
-                path = model.get_path(treeiter)
+            #(model, treeiter) = selection.get_selected()
+            #if treeiter:
+            #    path = model.get_path(treeiter)
 
             store.clear()
 
@@ -816,14 +822,22 @@ class Connection:
                     pos = pos + 1
 
             # restore selection
-            if treeiter:
-                if path.get_indices()[0] == pos:
-                    path.prev()
-                if path.get_indices()[0] != -1:
-                    selection.select_path(path)
+            #if treeiter:
+                # select previous entry (deleted last entry)
+            #    if path.get_indices()[0] == pos:
+            #        path.prev()
+
+            #    if path.get_indices()[0] != -1:
+            #        selection.select_path(path)
+            #        view.scroll_to_cell(path, None, True, 0.45, 0.0)
+            #else:
+            selection.select_path(cur)
+            view.scroll_to_cell(cur, None, True, 0.45, 0.0)
+
+            # TODO
 
             # scroll to current playlist
-            view.scroll_to_cell(cur, None, True, 0.45, 0.0)
+            #view.scroll_to_cell(cur, None, True, 0.45, 0.0)
 
     def get_playlist(self):
         self.xmms_async.playlist_current_pos(cb=self.got_current_track)
@@ -868,9 +882,9 @@ class Connection:
             tracks = result.value()
 
             # store selection
-            (model, treeiter) = selection.get_selected()
-            if treeiter:
-                path = model.get_path(treeiter)
+            #(model, treeiter) = selection.get_selected()
+            #if treeiter:
+            #    path = model.get_path(treeiter)
 
             store.clear()
 
@@ -886,15 +900,21 @@ class Connection:
                 pos = pos + 1
 
             # restore selection
-            if treeiter:
-                if path.get_indices()[0] == pos:
-                    path.prev()
-                if path.get_indices()[0] != -1:
-                    selection.select_path(path)
+            #if treeiter:
+            #    if path.get_indices()[0] == pos:
+            #        path.prev()
+            #    if path.get_indices()[0] != -1:
+            #        selection.select_path(path)
+            #        view.scroll_to_cell(current, None, True, 0.45, 0.0)
+            #else:
+            selection.select_path(current)
+            view.scroll_to_cell(current, None, True, 0.45, 0.0)
+
+            # TODO
 
             # scroll to current track
-            if current != -1:
-                view.scroll_to_cell(current, None, True, 0.45, 0.0)
+            #if current != -1:
+            #    view.scroll_to_cell(current, None, True, 0.45, 0.0)
 
             self.update = False
 
@@ -923,10 +943,20 @@ class Connection:
         return GLib.markup_escape_text(string)
 
     def jump_to(self, pos):
+        # tickle if running
+        # start if not running
         self.xmms_async.playlist_set_next(pos)
+        self.xmms_async.playback_start()
         self.xmms_async.playback_tickle()
-        if self.xmms_async.playback_status != xmmsclient.PLAYBACK_STATUS_PLAY:
-            self.xmms_async.playback_start()
+
+        #result = self.xmms_async.playback_status()
+        #if result.is_error():
+        #    print(result.value())
+        #    return
+        #if result.value() != xmmsclient.PLAYBACK_STATUS_PLAY:
+        #    self.xmms_async.playback_start()
+        #else:
+        #    self.xmms_async.playback_tickle()
 
     def setup_playlists_cb(self, func):
         # add/remove playlist
@@ -939,7 +969,7 @@ class Connection:
         self.xmms_async.broadcast_playlist_current_pos(func)
         self.xmms_async.broadcast_playlist_loaded(func)
 
-    def remove_playlist(self, name):
+    def remove_playlist(self, widget, name):
         if name != "":
             self.xmms_async.playlist_remove(name)
 
@@ -954,8 +984,8 @@ class Connection:
     def playlist_clear(self, widget, playlist):
         self.xmms_async.playlist_clear(playlist)
 
-    def playlist_remove(self, widget, playlist):
-        self.xmms_async.playlist_remove(playlist)
+#    def playlist_remove(self, widget, playlist):
+#        self.xmms_async.playlist_remove(playlist)
 
     def playlist_create(self, playlist):
         self.xmms_async.playlist_create(playlist)
