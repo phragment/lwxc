@@ -456,11 +456,10 @@ class window_main():
         about_dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
         about_dialog.set_transient_for(self.window)
 
-        about_dialog.set_name("le wild xmms2 client")
+        about_dialog.set_program_name("le wild xmms2 client")
         about_dialog.set_version("0.1")
         #about_dialog.set_comments("Ein einfacher Medien-Bibliothek Browser für XMMS2, mit Fokus auf Tastaturbedienbarkeit.")
         about_dialog.set_comments("A simple media library browser for XMMS2, with a focus on keyboard operability.")
-        #about_dialog.set_authors(["Thomas Krug"])
         about_dialog.set_copyright("Copyright © 2012 Thomas Krug")
         about_dialog.set_website("http://phragment.github.com/lwxc/")
         about_dialog.set_website_label("phragment.github.com/lwxc")
@@ -473,7 +472,7 @@ class window_main():
     def show_text_entry_dialog(self, widget):
         self.dialog = Gtk.Dialog("new playlist", self.window, Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT)
         self.dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-        self.dialog.set_size_request(300, 80)
+        #self.dialog.set_size_request(300, 80)
 
         label = Gtk.Label(label="Please enter name:")
         self.dialog.vbox.pack_start(label, True, True, 0)
