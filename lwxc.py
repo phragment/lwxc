@@ -198,9 +198,8 @@ class window_main():
         self.playlists = Gtk.ListStore(str)
         self.playlists_tv.set_model(self.playlists)
 
-        self.playlists_tv.connect("row-activated", self.on_playlists_activated)
         self.playlists_tv.connect("button-press-event", self.on_playlists_button_press)
-        self.playlists_tv.connect("popup-menu", self.on_playlists_popup_menu)
+        self.playlists_tv.connect("key-press-event", self.on_playlists_key_press)
 
         self.playlists_sw.add(self.playlists_tv)
 
@@ -231,7 +230,6 @@ class window_main():
         self.playlist = Gtk.ListStore(str)
         self.playlist_tv.set_model(self.playlist)
 
-        self.playlist_tv.connect("row-activated", self.on_playlist_activated)
         self.playlist_tv.connect("key-press-event", self.on_playlist_key_press)
 
         self.playlist_sw.add(self.playlist_tv)
@@ -369,14 +367,14 @@ class window_main():
 
         connection.add_tracks(tracks)
 
-    def on_playlists_activated(self, treeview, path, column):
-        connection.load_playlist(get_selected_entry(treeview))
+    def on_playlists_key_press(self, treeview, event):
 
-        # focus
-        self.playlist_tv.grab_focus()
+        if event.keyval == Gdk.KEY_Menu:
+            self.playlists_menu(treeview, None)
 
-    def on_playlist_activated(self, treeview, path, column):
-        connection.jump_to(get_selected_entry_position(treeview))
+        if event.keyval == Gdk.KEY_Return:
+            connection.load_playlist(get_selected_entry(treeview))
+            self.playlist_tv.grab_focus()
 
     def on_playlists_button_press(self, treeview, event):
 
@@ -389,14 +387,13 @@ class window_main():
 
             self.playlists_menu(treeview, event)
 
-            return True
-
-        return False
-
     def on_playlist_key_press(self, treeview, event):
 
         if event.keyval == Gdk.KEY_Delete:
             connection.remove_playlist_entry(get_selected_entry_position(treeview))
+
+        if event.keyval == Gdk.KEY_Return:
+            connection.jump_to(get_selected_entry_position(treeview))
 
     def on_playlists_changed(self, result):
         connection.get_playlists()
@@ -405,10 +402,6 @@ class window_main():
         # meh
         if not connection.update:
             connection.get_playlist()
-
-    def on_playlists_popup_menu(self, widget):
-        self.playlists_menu(widget, None)
-        return True
 
     def playlists_menu(self, treeview, event):
 
@@ -632,12 +625,14 @@ class GLibConnector:
 
 class Connection:
 
+    xmms = None
     xmms_async = None
 
     update = False
 
     def __init__(self):
 
+        self.xmms = xmmsclient.XMMS("lwxc_playback")
         self.xmms_async = xmmsclient.XMMS("lwxc")
 
         try:
@@ -648,27 +643,72 @@ class Connection:
                 # would like to use goto here
                 self.xmms_async.connect(os.getenv("XMMS_PATH"), disconnect_func=self.disconnect)
             else:
-                print("Error:", detail)
+                print("Connection failed:", detail)
                 sys.exit(1)
 
         conn = GLibConnector(self.xmms_async)
 
+        try:
+            self.xmms.connect(os.getenv("XMMS_PATH"))
+        except IOError as detail:
+            print("Connection failed:", detail)
+            sys.exit(1)
+
     def play(self, widget):
-        self.xmms_async.playback_start()
+        result = self.xmms.playback_start()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
 
     def pause(self, widget):
-        self.xmms_async.playback_pause()
+        result = self.xmms.playback_pause()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
 
     def stop(self, widget):
-        self.xmms_async.playback_stop()
+        result = self.xmms.playback_stop()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
 
     def next_(self, widget):
-        self.xmms_async.playlist_set_next_rel(1)
-        self.xmms_async.playback_tickle()
+        result = self.xmms.playlist_set_next_rel(1)
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
+
+        result = self.xmms.playback_tickle()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
 
     def prev(self, widget):
-        self.xmms_async.playlist_set_next_rel(-1)
-        self.xmms_async.playback_tickle()
+        result = self.xmms.playlist_set_next_rel(-1)
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
+
+        result = self.xmms.playback_tickle()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
+
+    def jump_to(self, pos):
+        result = self.xmms.playlist_set_next(pos)
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
+
+        result = self.xmms.playback_tickle()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
+
+        result = self.xmms.playback_start()
+        result.wait()
+        if result.iserror():
+          print("Error:", result.get_error())
 
 
     def add_artists(self, artists):
@@ -941,22 +981,6 @@ class Connection:
             string = "none"
 
         return GLib.markup_escape_text(string)
-
-    def jump_to(self, pos):
-        # tickle if running
-        # start if not running
-        self.xmms_async.playlist_set_next(pos)
-        self.xmms_async.playback_start()
-        self.xmms_async.playback_tickle()
-
-        #result = self.xmms_async.playback_status()
-        #if result.is_error():
-        #    print(result.value())
-        #    return
-        #if result.value() != xmmsclient.PLAYBACK_STATUS_PLAY:
-        #    self.xmms_async.playback_start()
-        #else:
-        #    self.xmms_async.playback_tickle()
 
     def setup_playlists_cb(self, func):
         # add/remove playlist
