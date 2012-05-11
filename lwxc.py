@@ -230,6 +230,7 @@ class window_main():
         self.playlist = Gtk.ListStore(str)
         self.playlist_tv.set_model(self.playlist)
 
+        self.playlist_tv.connect("button-press-event", self.on_playlist_button_press)
         self.playlist_tv.connect("key-press-event", self.on_playlist_key_press)
 
         self.playlist_sw.add(self.playlist_tv)
@@ -378,6 +379,11 @@ class window_main():
 
     def on_playlists_button_press(self, treeview, event):
 
+        if event.button == 1:
+            if event.type == Gdk.EventType._2BUTTON_PRESS:
+                connection.load_playlist(get_selected_entry(treeview))
+                self.playlist_tv.grab_focus()
+
         if event.button == 3:
             pthinfo = treeview.get_path_at_pos(int(event.x), int(event.y))
 
@@ -394,6 +400,12 @@ class window_main():
 
         if event.keyval == Gdk.KEY_Return:
             connection.jump_to(get_selected_entry_position(treeview))
+
+    def on_playlist_button_press(self, treeview, event):
+
+        if event.button == 1:
+            if event.type == Gdk.EventType._2BUTTON_PRESS:
+                connection.jump_to(get_selected_entry_position(treeview))
 
     def on_playlists_changed(self, result):
         connection.get_playlists()
