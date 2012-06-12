@@ -1127,6 +1127,9 @@ class Config():
             return False
 
 def signal_handler(signum, frame):
+    loop.quit()
+
+def signal_handler_toggle(signum, frame):
     window.toggle()
 
 if __name__ == "__main__":
@@ -1170,6 +1173,9 @@ if __name__ == "__main__":
             #print("going to toggle")
             os.kill(int(pidfile.readline()), signal.SIGUSR1)
             pidfile.close()
+
+            # this can fail
+
             sys.exit(0)
         except OSError:
             #print("no instance is running")
@@ -1201,7 +1207,11 @@ if __name__ == "__main__":
         window = window_main(options.instance)
         icon = TrayIcon()
 
-        signal.signal(signal.SIGUSR1, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        #signal.signal(signal.SIGHUP, signal_handler)
+        # ignore SIGHUP
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        signal.signal(signal.SIGUSR1, signal_handler_toggle)
 
         loop.run()
 
