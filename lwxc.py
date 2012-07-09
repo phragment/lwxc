@@ -1150,6 +1150,9 @@ if __name__ == "__main__":
     parser.add_option("-i", "--instance",
                       action="store", dest="instance", default="default",
                       help="name of instance")
+    parser.add_option("-s", "--show",
+                      action="store_true", dest="show", default=False,
+                      help="show instance")
 
     (options, args) = parser.parse_args()
 
@@ -1206,6 +1209,9 @@ if __name__ == "__main__":
         connection = Connection()
         window = window_main(options.instance)
         icon = TrayIcon()
+
+        if options.show:
+            window.toggle()
 
         signal.signal(signal.SIGTERM, signal_handler)
         #signal.signal(signal.SIGHUP, signal_handler)
