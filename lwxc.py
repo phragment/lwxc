@@ -68,7 +68,7 @@ class window_main():
 
     def __init__(self, instance):
 
-        self.window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        self.window = Gtk.Window()
         self.window.connect("delete-event", self.on_delete_event)
         self.window.connect("window-state-event", self.on_window_state_event)
         self.window.connect("configure-event", self.on_configure_event)
@@ -87,6 +87,9 @@ class window_main():
 
         if config.get_skip_taskbar():
             self.window.set_skip_taskbar_hint(True)
+
+        if config.get_force_show():
+            self.window.set_keep_above(True)
 
         vbox1 = Gtk.VBox(False, 0)
         self.window.add(vbox1)
@@ -1043,6 +1046,7 @@ class Config():
     autostop = "False"
     maximize = "False"
     skip_taskbar = "False"
+    force_show = "False"
 
     def __init__(self, filename):
 
@@ -1057,6 +1061,7 @@ class Config():
             test.set("main", "SERVER_SHUTDOWN", self.autostop)
             test.set("main", "MAXIMIZE", self.maximize)
             test.set("main", "SKIP_TASKBAR", self.skip_taskbar)
+            test.set("main", "FORCE_SHOW", self.force_show)
             test.write(config)
             config.close()
             return
@@ -1094,6 +1099,11 @@ class Config():
         except configparser.NoOptionError:
             parser.set("main", "SKIP_TASKBAR", self.skip_taskbar)
             changed = True
+        try:
+            self.force_show = parser.get("main", "FORCE_SHOW")
+        except configparser.NoOptionError:
+            parser.set("main", "FORCE_SHOW", self.force_show)
+            changed = True
 
         config.close()
 
@@ -1122,6 +1132,12 @@ class Config():
 
     def get_skip_taskbar(self):
         if self.skip_taskbar == "True":
+            return True
+        else:
+            return False
+
+    def get_force_show(self):
+        if self.force_show == "True":
             return True
         else:
             return False
