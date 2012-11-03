@@ -936,9 +936,9 @@ class Connection:
             tracks = result.value()
 
             # store selection
-            #(model, treeiter) = selection.get_selected()
-            #if treeiter:
-            #    path = model.get_path(treeiter)
+            (model, treeiter) = selection.get_selected()
+            if treeiter:
+                path = model.get_path(treeiter)
 
             store.clear()
 
@@ -954,21 +954,25 @@ class Connection:
                 pos = pos + 1
 
             # restore selection
-            #if treeiter:
-            #    if path.get_indices()[0] == pos:
-            #        path.prev()
-            #    if path.get_indices()[0] != -1:
-            #        selection.select_path(path)
-            #        view.scroll_to_cell(current, None, True, 0.45, 0.0)
-            #else:
-            selection.select_path(current)
-            view.scroll_to_cell(current, None, True, 0.45, 0.0)
+            if treeiter:
+                if path.get_indices()[0] == pos:
+                    path.prev()
+                if path.get_indices()[0] != -1:
+                    selection.select_path(path)
+            else:
+                # select current track, if nothing selected
+                if (current != -1):
+                    selection.select_path(current)
 
-            # TODO
-
-            # scroll to current track
-            #if current != -1:
-            #    view.scroll_to_cell(current, None, True, 0.45, 0.0)
+            # TODO 
+            # make intelligent
+            # not if selection?!
+            # selection follows playback?!
+            # playback follows cursor?!
+            #
+            # follow playback
+            if current != -1:
+                view.scroll_to_cell(current, None, True, 0.49, 0.0)
 
             self.update = False
 
