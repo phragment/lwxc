@@ -644,6 +644,9 @@ class Connection:
 
     update = False
 
+    previous_playlist = ""
+    current_playlist = ""
+
     def __init__(self):
 
         self.xmms = xmmsclient.XMMS("lwxc_playback")
@@ -838,13 +841,18 @@ class Connection:
         self.xmms_async.playlist_load(name)
 
     def get_playlists(self):
+        # update previous playlist
+        self.previous_playlist = self.current_playlist
+
         self.xmms_async.playlist_current_active(cb=self.got_current_playlist)
 
     def got_current_playlist(self, result):
         if result.is_error():
             print(result.value())
         else:
+            # update current playlist
             self.current_playlist = result.value()
+
             self.xmms_async.playlist_list(cb=self.got_playlists)
 
     def got_playlists(self, result):
@@ -859,11 +867,13 @@ class Connection:
             playlists = result.value()
 
             # store selection
-            #(model, treeiter) = selection.get_selected()
-            #if treeiter:
-            #    path = model.get_path(treeiter)
+            (model, treeiter) = selection.get_selected()
+            if treeiter:
+                path = model.get_path(treeiter)
 
             store.clear()
+
+            playlists.sort()
 
             pos = 0
             for playlist in playlists:
@@ -875,23 +885,20 @@ class Connection:
                         store.append([GLib.markup_escape_text(playlist)])
                     pos = pos + 1
 
-            # restore selection
-            #if treeiter:
-                # select previous entry (deleted last entry)
-            #    if path.get_indices()[0] == pos:
-            #        path.prev()
-
-            #    if path.get_indices()[0] != -1:
-            #        selection.select_path(path)
-            #        view.scroll_to_cell(path, None, True, 0.45, 0.0)
-            #else:
-            selection.select_path(cur)
-            view.scroll_to_cell(cur, None, True, 0.45, 0.0)
-
-            # TODO
-
-            # scroll to current playlist
-            #view.scroll_to_cell(cur, None, True, 0.45, 0.0)
+            if self.current_playlist == self.previous_playlist:
+                # restore selection
+                if treeiter:
+                    if path.get_indices()[0] == pos:
+                        path.prev()
+                   # if empty, don't select anything
+                    if path.get_indices()[0] != -1:
+                        selection.select_path(path)
+                        view.scroll_to_cell(path, None, True, 0.49, 0.0)
+            else:
+                # select current track, if nothing selected
+                if (cur != -1):
+                    selection.select_path(cur)
+                    view.scroll_to_cell(cur, None, True, 0.49, 0.0)
 
     def get_playlist(self):
         self.xmms_async.playlist_current_pos(cb=self.got_current_track)
@@ -953,26 +960,20 @@ class Connection:
                 store.append([entry])
                 pos = pos + 1
 
-            # restore selection
-            if treeiter:
-                if path.get_indices()[0] == pos:
-                    path.prev()
-                if path.get_indices()[0] != -1:
-                    selection.select_path(path)
+            if self.current_playlist == self.previous_playlist:
+                # restore selection
+                if treeiter:
+                    if path.get_indices()[0] == pos:
+                        path.prev()
+                   # if empty, don't select anything
+                    if path.get_indices()[0] != -1:
+                        selection.select_path(path)
+                        view.scroll_to_cell(path, None, True, 0.49, 0.0)
             else:
                 # select current track, if nothing selected
                 if (current != -1):
                     selection.select_path(current)
-
-            # TODO 
-            # make intelligent
-            # not if selection?!
-            # selection follows playback?!
-            # playback follows cursor?!
-            #
-            # follow playback
-            if current != -1:
-                view.scroll_to_cell(current, None, True, 0.49, 0.0)
+                    view.scroll_to_cell(current, None, True, 0.49, 0.0)
 
             self.update = False
 
