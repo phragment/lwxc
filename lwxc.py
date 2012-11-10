@@ -414,6 +414,15 @@ class window_main():
         connection.get_playlists()
 
     def on_playlist_changed(self, result):
+
+        # TODO
+        if result.is_error():
+            print(result.value())
+        else:
+            track = result.value()
+
+        #print("on_playlist_changed:", track)
+
         # meh
         if not connection.update:
             connection.get_playlist()
@@ -885,27 +894,24 @@ class Connection:
                         store.append([GLib.markup_escape_text(playlist)])
                     pos = pos + 1
 
-            if self.current_playlist == self.previous_playlist:
-                # restore selection
-                if treeiter:
-                    if path.get_indices()[0] == pos:
-                        path.prev()
-                   # if empty, don't select anything
-                    if path.get_indices()[0] != -1:
-                        selection.select_path(path)
-                        view.scroll_to_cell(path, None, True, 0.49, 0.0)
+            # restore selection
+            if treeiter:
+
+                if path.get_indices()[0] == pos:
+                    path.prev()
+
+                selection.select_path(path)
+
             else:
-                # select current track, if nothing selected
-                if (cur != -1):
-                    selection.select_path(cur)
-                    view.scroll_to_cell(cur, None, True, 0.49, 0.0)
+                selection.select_path(cur)
+                view.scroll_to_cell(cur, None, True, 0.49, 0.0)
 
     def get_playlist(self):
         self.xmms_async.playlist_current_pos(cb=self.got_current_track)
 
     def got_current_track(self, result):
         if result.is_error():
-            self.current_track = -1
+            self.current_track = 0
         else:
             self.current_track = result.value()["position"]
 
@@ -942,6 +948,9 @@ class Connection:
         else:
             tracks = result.value()
 
+            if (len(tracks) == 0):
+                current = -1
+
             # store selection
             (model, treeiter) = selection.get_selected()
             if treeiter:
@@ -960,20 +969,27 @@ class Connection:
                 store.append([entry])
                 pos = pos + 1
 
-            if self.current_playlist == self.previous_playlist:
-                # restore selection
-                if treeiter:
-                    if path.get_indices()[0] == pos:
-                        path.prev()
-                   # if empty, don't select anything
-                    if path.get_indices()[0] != -1:
-                        selection.select_path(path)
-                        view.scroll_to_cell(path, None, True, 0.49, 0.0)
-            else:
-                # select current track, if nothing selected
-                if (current != -1):
-                    selection.select_path(current)
-                    view.scroll_to_cell(current, None, True, 0.49, 0.0)
+
+            # playlist not empty
+            if current != -1:
+                    # saved selection from current playlist
+                    if self.current_playlist == self.previous_playlist:
+                        # selection exists
+                        if treeiter:
+                            # selected track was deleted
+                            if path.get_indices()[0] == pos:
+                                path.prev()
+                        else:
+                            path = current
+                    # no selection
+                    else:
+                        # select first track
+                        path = current
+
+                    # restore selection
+                    selection.select_path(path)
+                    # scroll to selection
+                    view.scroll_to_cell(path, None, True, 0.49, 0.0)
 
             self.update = False
 
