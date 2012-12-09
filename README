@@ -4,7 +4,8 @@ The window is now single instance, so calling it again will only bring up the ol
 To have multiple instances running you can use "lwxc.py -i <instance_name>".
 
 Dependencies are:
-- python3
+- python (tested with 3.3.0)
 - python-gobject (2.28 or later)
 - xmms2 (compiled from git devel branch with python3 bindings)
+- python-dbus
 

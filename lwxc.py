@@ -31,6 +31,10 @@ from gi.repository import Gtk, Gdk, GObject, GLib, GdkPixbuf
 import xmmsclient
 import xmmsclient.collections
 
+import dbus
+import dbus.service
+from dbus.mainloop.glib import DBusGMainLoop 
+
 class window_main():
 
     window = None
@@ -1163,11 +1167,23 @@ class Config():
         else:
             return False
 
-def signal_handler(signum, frame):
+
+def handle_sigterm(signum, frame):
     loop.quit()
 
-def signal_handler_toggle(signum, frame):
-    window.toggle()
+
+class DBusService(dbus.service.Object):
+    def __init__(self, instance):
+        bus = dbus.SessionBus(mainloop=DBusGMainLoop())
+        bus_name = dbus.service.BusName("org.example.lwxc." + instance, bus)
+        dbus.service.Object.__init__(self, bus_name, "/org/example/lwxc")
+
+    @dbus.service.method("org.example.lwxc")
+    def show(self):
+        print("show called")
+        window.toggle()
+        return "done"
+
 
 if __name__ == "__main__":
     global config
@@ -1179,7 +1195,6 @@ if __name__ == "__main__":
     global iconname
     iconname = "/usr/share/pixmaps/lwxc.svg"
 
-    #global config_path
     config_path = os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc/"
 
     parser = optparse.OptionParser()
@@ -1193,49 +1208,9 @@ if __name__ == "__main__":
 
     (options, args) = parser.parse_args()
 
-    pid_file = config_path + options.instance + ".pid"
-
 
     if not os.path.exists(config_path):
         os.makedirs(config_path)
-
-    # handle pid file
-    try:
-        pid_fd = os.open(pid_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o0600)
-    except OSError:
-        #print("pidfile already exists")
-        try:
-            pidfile = open(pid_file, 'r')
-        except IOError:
-            print("error opening pidfile")
-            sys.exit(1)
-        try:
-            #print("going to toggle")
-            os.kill(int(pidfile.readline()), signal.SIGUSR1)
-            pidfile.close()
-
-            # this can fail
-
-            sys.exit(0)
-        except OSError:
-            #print("no instance is running")
-            try:
-                os.remove(pid_file)
-            except OSError:
-                print("error removing pidfile")
-                sys.exit(1)
-            try:
-                pid_fd = os.open(pid_file, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o0600)
-            except OSError:
-                print("persistent error with pidfile, giving up")
-                sys.exit(1)
-
-    pid = os.fdopen(pid_fd, 'w')
-    try:
-        pid.write(str(os.getpid()))
-        pid.close()
-    except IOError:
-        pass
 
 
     try:
@@ -1250,21 +1225,30 @@ if __name__ == "__main__":
         if options.show:
             window.toggle()
 
-        signal.signal(signal.SIGTERM, signal_handler)
-        #signal.signal(signal.SIGHUP, signal_handler)
-        # ignore SIGHUP
+
+        # check for running instance
+        try:
+            bus = dbus.SessionBus(mainloop=DBusGMainLoop())
+            test_service = bus.get_object("org.example.lwxc." + options.instance, "/org/example/lwxc")
+            test_method = test_service.get_dbus_method("show", "org.example.lwxc")
+            result = test_method()
+            if result == "done":
+                sys.exit(0)
+        except dbus.exceptions.DBusException:
+            print("no instance running")
+
+        # register DBus Service
+        service = DBusService(options.instance)
+
+
+        # handle signals
+        signal.signal(signal.SIGTERM, handle_sigterm)
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        signal.signal(signal.SIGUSR1, signal_handler_toggle)
 
         loop.run()
 
     except KeyboardInterrupt:
         loop.quit()
-
-    try:
-        os.remove(pid_file)
-    except OSError:
-        pass
 
     if config.get_autostop():
         connection.daemon_quit()
