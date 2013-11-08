@@ -1221,7 +1221,7 @@ if __name__ == "__main__":
     try:
         config = Config(config_path + options.instance + ".conf")
 
-        loop = GObject.MainLoop(None, False)
+        loop = GObject.MainLoop(None)
 
         connection = Connection()
         window = window_main(options.instance)
