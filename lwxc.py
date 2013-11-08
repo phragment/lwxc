@@ -1195,7 +1195,12 @@ if __name__ == "__main__":
     global iconname
     iconname = "/usr/share/pixmaps/lwxc.svg"
 
-    config_path = os.getenv("XDG_CONFIG_HOME") + "/xmms2/clients/lwxc/"
+    config_home = os.getenv("XDG_CONFIG_HOME")
+
+    if not config_home:
+        config_home = os.path.expanduser("~/.config")
+
+    config_path = config_home + "/xmms2/clients/lwxc/"
 
     parser = optparse.OptionParser()
 
