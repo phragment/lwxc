@@ -245,22 +245,93 @@ class window_main():
         connection.get_playlist()
 
 
-        # no seekbar at the moment
-        #hbox2 = Gtk.HBox(False, 0)
-        #vbox1.pack_start(hbox2, False, False, 0)
+        hbox2 = Gtk.HBox(False, 0)
+        # remove all widgets in bottom box from focus chain
+        hbox2.set_focus_chain([])
+        vbox1.pack_start(hbox2, False, False, 0)
 
-        #seekbar = Gtk.HScale()
-        #hbox2.pack_start(seekbar, True, True, 0)
-        #seekbar.set_draw_value(False)
+        # TODO add accelerators?
+        prev_img = Gtk.Image()
+        prev_img.set_from_stock(Gtk.STOCK_MEDIA_PREVIOUS, Gtk.IconSize.BUTTON)
+        prev = Gtk.Button(image=prev_img)
+        prev.connect("clicked", connection.prev)
+        hbox2.pack_start(prev, False, False, 0)
 
-        #volume = Gtk.VolumeButton()
-        #hbox2.pack_start(volume, False, False, 0)
+        play_img = Gtk.Image()
+        play_img.set_from_stock(Gtk.STOCK_MEDIA_PLAY, Gtk.IconSize.BUTTON)
+        play = Gtk.Button(image=play_img)
+        play.connect("clicked", connection.play)
+        hbox2.pack_start(play, False, False, 0)
 
+        pause_img = Gtk.Image()
+        pause_img.set_from_stock(Gtk.STOCK_MEDIA_PAUSE, Gtk.IconSize.BUTTON)
+        pause = Gtk.Button(image=pause_img)
+        pause.connect("clicked", connection.pause)
+        hbox2.pack_start(pause, False, False, 0)
+
+        stop_img = Gtk.Image()
+        stop_img.set_from_stock(Gtk.STOCK_MEDIA_STOP, Gtk.IconSize.BUTTON)
+        stop = Gtk.Button(image=stop_img)
+        stop.connect("clicked", connection.stop)
+        hbox2.pack_start(stop, False, False, 0)
+
+        nxt_img = Gtk.Image()
+        nxt_img.set_from_stock(Gtk.STOCK_MEDIA_NEXT, Gtk.IconSize.BUTTON)
+        nxt = Gtk.Button(image=nxt_img)
+        nxt.connect("clicked", connection.next_)
+        hbox2.pack_start(nxt, False, False, 0)
+
+
+        self.elapsed = Gtk.Label("0:00")
+        hbox2.pack_start(self.elapsed, False, False, 0)
+
+        self.adj = Gtk.Adjustment()
+        self.adj.set_step_increment(1000)
+        self.adj.set_page_increment(10000)
+        self.scale = Gtk.HScale(adjustment=self.adj)
+        self.scale.set_draw_value(False)
+        # FIXME AttributeError: 'HScale' object has no attribute 'set_update_policy'
+        #self.scale.set_update_policy(Gtk.UPDATE_DISCONTINUOUS)
+        self.scale.connect("change-value", self.seek)
+        # TODO show tooltip like window on pull
+        #self.scale.connect("value-changed", self.seek_pos)
+        hbox2.pack_start(self.scale, True, True, 0)
+
+        self.duration = Gtk.Label("0:00")
+        hbox2.pack_start(self.duration, False, False, 0)
+
+
+        self.volume = Gtk.VolumeButton()
+        hbox2.pack_start(self.volume, False, False, 0)
+
+        self.volume.connect("value-changed", self.vol)
+
+        self.vol_adj = self.volume.get_adjustment()
+        self.vol_adj.set_lower(0)
+        self.vol_adj.set_upper(100)
+        self.vol_adj.set_step_increment(5)
+        self.vol_adj.set_page_increment(10)
+        self.vol_adj.set_value(connection.get_volume())
 
         vbox1.show_all()
 
         connection.setup_playlists_cb(self.on_playlists_changed)
         connection.setup_playlist_cb(self.on_playlist_changed)
+        connection.setup_playtime_cb(self.on_playtime_changed)
+        connection.setup_volume_cb(self.on_volume_changed)
+
+    def on_volume_changed(self, volume):
+        self.vol_adj.set_value(volume)
+
+    def seek(self, widget, scroll, value):
+        connection.seek(value)
+
+    # TODO
+    def seek_pos(self, widget):
+        self.scale.set_tooltip_text(self.mstostr(widget.get_value()))
+
+    def vol(self, widget, value):
+        connection.set_volume(value)
 
     def quit(self, widget):
         loop.quit()
@@ -297,6 +368,7 @@ class window_main():
         self.playlists_sw.set_min_content_height(new_height)
 
     def on_key_press_event(self, window, event):
+        # enable Left/Right keys
 
         if event.keyval == Gdk.KEY_Right:
             self.window.get_toplevel().child_focus(Gtk.DirectionType.TAB_FORWARD)
@@ -419,17 +491,26 @@ class window_main():
 
     def on_playlist_changed(self, result):
 
-        # TODO
-        if result.is_error():
-            print(result.value())
-        else:
-            track = result.value()
-
-        #print("on_playlist_changed:", track)
-
-        # meh
+        # meh, partial updates would need a far more sophisticated model
         if not connection.update:
             connection.get_playlist()
+
+    def on_playtime_changed(self, elapsed, duration):
+
+        self.scale.set_range(0, duration)
+        self.adj.set_lower(0)
+        self.adj.set_upper(duration)
+        self.adj.set_value(elapsed)
+
+        self.elapsed.set_text(self.mstostr(elapsed))
+        self.duration.set_text(self.mstostr(duration))
+
+    def mstostr(self, ms):
+        s = ms / 1000
+        if s/60 >= 60:
+            return ' ' + str(int(s/3600)) + ':' + str(int(s/60%60)).zfill(2) + ':' + str(int(s%60)).zfill(2) + ' '
+        else:
+            return ' ' + str(int(s/60)) + ':' + str(int(s%60)).zfill(2) + ' '
 
     def playlists_menu(self, treeview, event):
 
@@ -485,9 +566,8 @@ class window_main():
         about_dialog.set_transient_for(self.window)
 
         about_dialog.set_program_name("le wild xmms2 client")
-        about_dialog.set_version("0.1")
-        #about_dialog.set_comments("Ein einfacher Medien-Bibliothek Browser für XMMS2, mit Fokus auf Tastaturbedienbarkeit.")
-        about_dialog.set_comments("A simple media library browser for XMMS2, with a focus on keyboard operability.")
+        about_dialog.set_version("0.2 alpha")
+        about_dialog.set_comments("A simple media library browser for XMMS2,\nwith a focus on keyboard operability.")
         about_dialog.set_copyright("Copyright © 2012 Thomas Krug")
         about_dialog.set_website("http://phragment.github.com/lwxc/")
         about_dialog.set_website_label("phragment.github.com/lwxc")
@@ -683,6 +763,10 @@ class Connection:
         except IOError as detail:
             print("Connection failed:", detail)
             sys.exit(1)
+
+        self.current_track_elapsed = 0
+        self.current_track_duration = 0
+        self.current_pos = 0
 
     def play(self, widget):
         result = self.xmms.playback_start()
@@ -976,6 +1060,7 @@ class Connection:
 
             # playlist not empty
             if current != -1:
+                    # TODO FIXME works only after first switch between playlists!
                     # saved selection from current playlist
                     if self.current_playlist == self.previous_playlist:
                         # selection exists
@@ -1031,6 +1116,102 @@ class Connection:
         self.xmms_async.broadcast_playlist_changed(func)
         self.xmms_async.broadcast_playlist_current_pos(func)
         self.xmms_async.broadcast_playlist_loaded(func)
+
+    def on_playlist_current_pos(self, position):
+        if position.is_error():
+            return
+
+        self.current_pos = position.value()['position']
+
+        status = self.xmms.playback_status()
+        status.wait()
+        if not status.is_error():
+            if not status.value():
+                # stopped
+                self.xmms_async.playlist_list_entries(cb=self.on_playlist_current_pos_)
+
+    def on_playlist_current_pos_(self, result):
+        if result.is_error():
+            return
+        mlib_id = result.value()[self.current_pos]
+
+        self.xmms_async.medialib_get_info(mlib_id, self.on_playlist_current_pos__)
+
+    def on_playlist_current_pos__(self, result):
+        if result.is_error():
+            return
+        self.current_track_elapsed = 0
+        self.current_track_duration = result.value()['duration']
+        self.playtime_cb(self.current_track_elapsed, self.current_track_duration)
+
+    def on_playback_current_id(self, result):
+        if result.is_error():
+            return
+        self.current_track_id = result.value()
+
+        self.xmms_async.medialib_get_info(self.current_track_id, self.on_playback_current_id_)
+
+    def on_playback_current_id_(self, result):
+        if result.is_error():
+            return
+        self.current_track_duration = result.value()['duration']
+        self.playtime_cb(self.current_track_elapsed, self.current_track_duration)
+        
+    def setup_playtime_cb(self, func):
+        self.playtime_cb = func
+
+        ## update elapsed
+        self.xmms_async.signal_playback_playtime(self.on_playtime_cb)
+
+        ## reset elapsed on stop
+        self.xmms_async.broadcast_playback_status(self.on_playback_status)
+
+        ## update duration
+        # change while stopped
+        self.xmms_async.broadcast_playlist_current_pos(self.on_playlist_current_pos)
+        # change while playing
+        self.xmms_async.broadcast_playback_current_id(self.on_playback_current_id)
+
+        # set initial
+        self.xmms_async.playback_current_id(cb=self.on_playback_current_id)
+        self.xmms_async.playlist_current_pos(cb=self.on_playlist_current_pos)
+
+    def on_playback_status(self, result):
+        if result.is_error():
+            return
+        if result.value() == xmmsclient.PLAYBACK_STATUS_STOP:
+            self.playtime_cb(0, self.current_track_duration)
+
+    def on_playtime_cb(self, result):
+        if result.is_error():
+            return
+        self.current_track_elapsed = result.value()
+
+        self.playtime_cb(self.current_track_elapsed, self.current_track_duration)
+
+    def seek(self, ms):
+        result = self.xmms.playback_seek_ms(ms)
+        result.wait()
+
+    def get_volume(self):
+        result = self.xmms.playback_volume_get()
+        result.wait()
+        if result.is_error():
+            return 100
+        return result.value()['master']
+
+    def set_volume(self, vol):
+        result = self.xmms.playback_volume_set('master', vol)
+        result.wait()
+
+    def setup_volume_cb(self, func):
+        self.volume_cb = func
+        self.xmms_async.broadcast_playback_volume_changed(self.on_volume_cb)
+
+    def on_volume_cb(self, result):
+        if result.is_error():
+            return
+        self.volume_cb(result.value()['master'])
 
     def remove_playlist(self, widget, name):
         if name != "":
