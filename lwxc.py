@@ -80,11 +80,15 @@ class window_main():
         self.window.set_title("le wild xmms2 client")
         self.window.set_icon_from_file(iconname)
         self.window.set_wmclass(instance, "LWXC")
+
         screen = self.window.get_screen()
-        width = screen.get_width() * 0.75
-        height = screen.get_height() * 0.75
+        window_rect = screen.get_monitor_geometry(screen.get_monitor_at_window(screen.get_active_window()))
+        width  = window_rect.width  * 0.75
+        height = window_rect.height * 0.75
         self.window.set_size_request(int(width), int(height))
+
         self.window.set_position(Gtk.WindowPosition.CENTER)
+
 
         if config.get_maximize():
             self.window.maximize()
